@@ -1,0 +1,15 @@
+Fecha,Notas,ID,Nombre del Elemento,Precio,Unidades,Precio Unitario,Costo U,Tipo,Forma de pago,Costo Total,Margen
+2025-08-22,Prueba de integración con Google Sheets,A1,Aritos Rango de precio 1,$7100.00,1,$7100.00,Sin stock,,Efectivo,$7100.00,$7100.00
+2025-08-22,Primer Cliente,A2,Aritos Rango de precio 2,$2500.00,3,$833.33,Sin stock,,Tarjeta,$2500.00,$2500.00
+2025-08-22,,A3,Aritos Rango de precio 3,$23.00,22,$1.05,Sin stock,,Efectivo,$23.00,$23.00
+22/08,Prueba de integración,A1,Aritos Rango de precio 1,$25.50,2,$25.50,Sin stock,,Efectivo,$51.00,$51.00
+22/08,Prueba de integración completa,B2,Anillos Rango de precio 2,$15.75,3,$15.75,Sin stock,,Tarjeta,$47.25,$47.25
+22/08,23,A1,Aritos Rango de precio 1,$23.00,3333,$23.00,Sin stock,,Efectivo,"$76,659.00","$76,659.00"
+22/08,1,A1,Aritos Rango de precio 1,$23.00,1,$23.00,Sin stock,,Transferencia,$23.00,$23.00
+22/08,,A2,Aritos Rango de precio 2,$23.00,2,$23.00,Sin stock,,Efectivo,$46.00,$46.00
+22/08,2323,A1,Aritos Rango de precio 1,$23.00,1,$23.00,Sin stock,,Efectivo,$23.00,$23.00
+22/08,Primer Cliente,H2,Carteras/Piedras Rango de precio 2,"$10,000.00",2,"$10,000.00",Sin stock,,Efectivo,"$20,000.00","$20,000.00"
+22/08,Primera venta,I3,Ropa y Neceseres Rango de precio 3,"$15,000.00",1,"$15,000.00",Sin stock,,Efectivo,"$15,000.00","$15,000.00"
+22/08,Segunda venta,A3,Aritos Rango de precio 3,"$2,500.00",3,"$2,500.00",Sin stock,,Efectivo,"$7,500.00","$7,500.00"
+22/08,Primera Venta,E1,Gafas Rango de precio 1,"$2,500.00",3,"$2,500.00",Sin stock,,Transferencia,"$7,500.00","$7,500.00"
+22/08,Segunda venta,C3,Collar Rango de precio 3,"$4,000.00",5,"$4,000.00",Sin stock,,Tarjeta,"$20,000.00","$20,000.00"
