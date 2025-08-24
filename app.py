@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request, jsonify, send_file, abort
+from flask import Flask, render_template, request, jsonify, send_file, abort, redirect
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets
-from services.export_service import exportar_excel
+from services.export_service import exportar_a_google_sheets
 from services.catalog_service import obtener_catalogo
 
 app = Flask(__name__)
@@ -43,19 +43,19 @@ def api_eliminar_venta(index: int):
     except IndexError:
         return jsonify({"error": "Índice fuera de rango"}), 404
 
-# Exportar a Excel (append si el archivo existe)
+# Exportar a Google Sheets
 @app.route("/api/exportar", methods=["POST"])
 def api_exportar():
-    file_path = exportar_excel()  # devuelve ruta al archivo
-    return jsonify({"message": "Exportado a Excel", "path": str(file_path)}), 200
+    ventas = listar_ventas()
+    resultado = exportar_a_google_sheets(ventas)
+    return jsonify(resultado), 200
 
-# Descargar Excel generado
+# Redirigir a Google Sheets
 @app.route("/download/excel", methods=["GET"])
 def download_excel():
-    path = Path("data/ventas_milo.xlsx")
-    if not path.exists():
-        abort(404, "Aún no hay archivo Excel generado")
-    return send_file(path, as_attachment=True, download_name=path.name)
+    # Redirigir a la hoja de Google Sheets
+    sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
+    return redirect(f"https://docs.google.com/spreadsheets/d/{sheet_id}")
 
 @app.route("/api/catalogo", methods=["GET"])
 def api_catalogo():

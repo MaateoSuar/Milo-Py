@@ -1,38 +1,42 @@
 import os
 from pathlib import Path
 import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from .sales_service import listar_ventas
-from config import FILE_CONFIG
+from config import FILE_CONFIG, GOOGLE_SHEETS_CONFIG
 
 # Usar la configuración del archivo
 DATA_DIR = Path(FILE_CONFIG["DATA_DIR"])
 EXCEL_FILE = Path(FILE_CONFIG["EXCEL_FILENAME"])  # Archivo existente del usuario
 BACKUP_DIR = Path(FILE_CONFIG["BACKUP_DIR"])
 
-# Orden y nombres de columnas como tu export original
+# Orden y nombres de columnas según la estructura de Google Sheets
 COLUMNS = [
     "Fecha",
-    "ID Producto",
-    "Nombre del Producto",
-    "Precio Unitario",
+    "Notas",
+    "Id",
+    "Nombre del Elemento",
+    "Precio",
     "Unidades",
-    "Total",
-    "Forma de Pago",
-    "Notas"
+    "Precio Unitario",
+    "Costo U",
+    "Tipo"
 ]
 
 def _ventas_a_dataframe(ventas: list[dict]) -> pd.DataFrame:
     rows = []
     for v in ventas:
         rows.append({
-            "Fecha": v["fecha"],
-            "ID Producto": v["id"],
-            "Nombre del Producto": v["nombre"],
-            "Precio Unitario": v["precio"],
-            "Unidades": v["unidades"],
-            "Total": v["total"],
-            "Forma de Pago": v["pago"],
-            "Notas": v["notas"]
+            "Fecha": v.get("fecha", ""),
+            "Notas": v.get("notas", ""),
+            "Id": v.get("id", ""),
+            "Nombre del Elemento": v.get("nombre", ""),
+            "Precio": v.get("precio", ""),
+            "Unidades": v.get("unidades", ""),
+            "Precio Unitario": v.get("precio", ""),
+            "Costo U": "",  # Dejar vacío o calcular si es necesario
+            "Tipo": ""  # Dejar vacío o establecer un valor por defecto
         })
     df = pd.DataFrame(rows, columns=COLUMNS)
     return df
@@ -91,3 +95,111 @@ def exportar_excel(path: Path = EXCEL_FILE) -> Path:
             df_new.to_excel(path, index=False, engine="openpyxl")
             print(f"✅ Archivo Excel recreado: {path}")
         return path
+
+def exportar_a_google_sheets(ventas: list[dict] = None) -> dict:
+    """
+    Exporta las ventas a Google Sheets, manejando automáticamente la creación de nuevas hojas
+    cuando se alcance el límite de filas.
+    """
+    if ventas is None:
+        ventas = listar_ventas()
+    
+    if not ventas:
+        return {"success": True, "message": "No hay datos para exportar"}
+        
+    try:
+        # Autenticación
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(
+            GOOGLE_SHEETS_CONFIG["CREDENTIALS"], 
+            scope
+        )
+        client = gspread.authorize(creds)
+        
+        # Abrir la hoja de cálculo
+        sheet = client.open_by_key(GOOGLE_SHEETS_CONFIG["SHEET_ID"])
+        
+        # Intentar obtener la hoja activa o crear una nueva
+        try:
+            worksheet = sheet.worksheet(GOOGLE_SHEETS_CONFIG["SHEET_NAME"])
+        except gspread.WorksheetNotFound:
+            # Si no existe la hoja, crearla
+            worksheet = sheet.add_worksheet(
+                title=GOOGLE_SHEETS_CONFIG["SHEET_NAME"], 
+                rows=1000, 
+                cols=len(COLUMNS)
+            )
+            # Agregar encabezados
+            worksheet.append_row(COLUMNS)
+            last_row = 1
+            return _escribir_datos(worksheet, ventas, last_row)
+        
+        # Obtener todas las filas y encontrar la última con datos
+        all_values = worksheet.get_all_values()
+        
+        # Encontrar la última fila con datos reales
+        last_non_empty_row = 0
+        for i, row in enumerate(all_values, 1):
+            if any(cell.strip() for cell in row):
+                last_non_empty_row = i
+        
+        # La siguiente fila disponible es después de la última con datos
+        next_row = last_non_empty_row + 1
+        
+        # Si la hoja está vacía, agregar encabezados
+        if last_non_empty_row == 0:
+            worksheet.append_row(COLUMNS)
+            next_row = 2  # Empezar a escribir desde la fila 2
+        
+        # Verificar si hay suficiente espacio
+        max_rows = 1000  # Un límite razonable para empezar
+        if next_row + len(ventas) - 1 > max_rows:
+            # Buscar filas vacías para reutilizar
+            empty_rows = []
+            for i, row in enumerate(all_values, 1):
+                if i > last_non_empty_row:
+                    break
+                if not any(cell.strip() for cell in row):
+                    empty_rows.append(i)
+            
+            # Si hay suficientes filas vacías, usarlas
+            if len(empty_rows) >= len(ventas):
+                next_row = empty_rows[0]
+            else:
+                return {
+                    "success": False,
+                    "message": f"No hay suficiente espacio en la hoja. Por favor, limpia filas vacías o crea una nueva hoja."
+                }
+        
+        # Preparar datos para exportar
+        datos = []
+        for venta in ventas:
+            datos.append([
+                venta.get("fecha", ""),  # Fecha
+                venta.get("notas", ""),   # Notas
+                venta.get("id", ""),       # Id
+                venta.get("nombre", ""),   # Nombre del Elemento
+                venta.get("precio", ""),   # Precio
+                venta.get("unidades", ""), # Unidades
+                venta.get("precio", ""),   # Precio Unitario (mismo que Precio)
+                "",                        # Costo U (vacío)
+                ""                         # Tipo (vacío)
+            ])
+        
+        # Escribir los datos en la siguiente fila disponible
+        if datos:
+            # Usar range para especificar exactamente dónde escribir (A a I para 9 columnas)
+            range_name = f"A{next_row}:I{next_row + len(datos) - 1}"
+            worksheet.update(range_name, datos, value_input_option='USER_ENTERED')
+        
+        return {
+            "success": True,
+            "message": f"Se exportaron {len(ventas)} ventas correctamente (fila {next_row} a {next_row + len(datos) - 1})",
+            "url": f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_CONFIG['SHEET_ID']}/edit#gid={worksheet.id}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error al exportar a Google Sheets: {str(e)}"
+        }

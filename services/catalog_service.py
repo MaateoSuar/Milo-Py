@@ -1,5 +1,9 @@
-import requests
-import json
+"""
+Servicio robusto para leer el catálogo desde Google Sheets
+Usa gspread directamente para mejor manejo de errores y permisos
+"""
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import logging
 from config import GOOGLE_SHEETS_CONFIG
 
@@ -7,77 +11,231 @@ from config import GOOGLE_SHEETS_CONFIG
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class CatalogService:
+    def __init__(self):
+        try:
+            logger.info("Inicializando CatalogService...")
+            self.sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
+            self.catalog_gid = GOOGLE_SHEETS_CONFIG.get("CATALOG_GID", 0)
+            
+            # Scope necesario para leer Google Sheets
+            self.scope = [
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            # Configuración de credenciales
+            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                GOOGLE_SHEETS_CONFIG["CREDENTIALS"], 
+                self.scope
+            )
+            
+            # Inicializar cliente
+            self.client = gspread.authorize(self.creds)
+            
+            # Abrir la hoja
+            self.spreadsheet = self.client.open_by_key(self.sheet_id)
+            
+            # Obtener la hoja del catálogo por GID o nombre
+            if self.catalog_gid and str(self.catalog_gid).isdigit() and int(self.catalog_gid) > 0:
+                try:
+                    gid_int = int(self.catalog_gid)
+                    self.worksheet = self.spreadsheet.get_worksheet_by_id(gid_int)
+                    if not self.worksheet:
+                        raise ValueError(f"No se encontró hoja con GID {gid_int}")
+                except Exception as e:
+                    logger.warning(f"No se pudo obtener hoja por GID {gid_int}: {e}")
+                    # Fallback: usar la primera hoja
+                    self.worksheet = self.spreadsheet.sheet1
+            else:
+                # Usar la primera hoja si no se especifica GID válido
+                self.worksheet = self.spreadsheet.sheet1
+            
+            logger.info(f"Catálogo conectado: {self.worksheet.title}")
+            
+        except Exception as e:
+            error_msg = f"Error al inicializar CatalogService: {str(e)}"
+            logger.error(error_msg)
+            raise
+    
+    def buscar_columna_flexible(self, headers, patrones_busqueda):
+        """
+        Busca una columna de forma flexible usando múltiples patrones
+        """
+        headers_lower = [h.lower().strip() if h else "" for h in headers]
+        
+        for patron in patrones_busqueda:
+            patron_lower = patron.lower()
+            
+            # Búsqueda exacta
+            for i, header in enumerate(headers_lower):
+                if header == patron_lower:
+                    logger.info(f"Columna '{patron}' encontrada en posición {i}")
+                    return i
+            
+            # Búsqueda parcial
+            for i, header in enumerate(headers_lower):
+                if patron_lower in header or header in patron_lower:
+                    logger.info(f"Columna '{patron}' encontrada parcialmente en posición {i} (header: '{headers[i]}')")
+                    return i
+        
+        return None
+    
+    def obtener_catalogo(self):
+        """
+        Descarga el catálogo desde Google Sheets y devuelve un dict {ID: Nombre}
+        """
+        try:
+            logger.info("Descargando catálogo desde Google Sheets...")
+            
+            # Verificar permisos primero
+            try:
+                # Intentar leer una celda para verificar permisos
+                test_cell = self.worksheet.acell('A1').value
+                logger.info("Permisos de lectura verificados correctamente")
+            except gspread.exceptions.APIError as e:
+                error_msg = str(e).lower()
+                if "permission" in error_msg or "denied" in error_msg:
+                    raise RuntimeError(
+                        "PERMISSION_DENIED: No tienes permisos para leer esta hoja. "
+                        "Verifica que la cuenta de servicio tenga acceso de lectura."
+                    )
+                else:
+                    raise RuntimeError(f"Error del API de Google Sheets: {e}")
+            
+            # Obtener todos los valores de la hoja
+            all_values = self.worksheet.get_all_values()
+            
+            if not all_values:
+                logger.warning("La hoja del catálogo está vacía")
+                return {}
+            
+            # La primera fila son los headers
+            headers = all_values[0]
+            logger.info(f"Headers encontrados: {headers}")
+            
+            # Buscar columnas de ID y Nombre de forma flexible
+            patrones_id = ["id", "código", "sku", "codigo", "producto_id"]
+            patrones_nombre = ["nombre", "descripción", "descripcion", "producto", "item", "elemento"]
+            
+            idx_id = self.buscar_columna_flexible(headers, patrones_id)
+            idx_nombre = self.buscar_columna_flexible(headers, patrones_nombre)
+            
+            if idx_id is None:
+                raise RuntimeError(
+                    f"No se encontró columna de ID. Headers disponibles: {headers}. "
+                    f"Patrones buscados: {patrones_id}"
+                )
+            
+            if idx_nombre is None:
+                raise RuntimeError(
+                    f"No se encontró columna de Nombre. Headers disponibles: {headers}. "
+                    f"Patrones buscados: {patrones_nombre}"
+                )
+            
+            # Procesar filas de datos (excluyendo headers)
+            catalogo = {}
+            rows_processed = 0
+            rows_skipped = 0
+            
+            for row_idx, row in enumerate(all_values[1:], start=2):  # start=2 porque las filas empiezan en 1
+                try:
+                    # Verificar que la fila tenga suficientes columnas
+                    if len(row) <= max(idx_id, idx_nombre):
+                        logger.debug(f"Fila {row_idx} ignorada: insuficientes columnas")
+                        rows_skipped += 1
+                        continue
+                    
+                    # Obtener valores de ID y Nombre
+                    id_val = row[idx_id]
+                    nombre_val = row[idx_nombre]
+                    
+                    # Limpiar y validar valores
+                    if id_val and nombre_val:
+                        id_clean = str(id_val).strip()
+                        nombre_clean = str(nombre_val).strip()
+                        
+                        # Solo agregar si ambos valores son válidos
+                        if id_clean and nombre_clean and id_clean.lower() not in ['', 'n/a', 'null', 'none']:
+                            # Convertir ID a mayúsculas para consistencia
+                            id_clean = id_clean.upper()
+                            catalogo[id_clean] = nombre_clean
+                            rows_processed += 1
+                        else:
+                            rows_skipped += 1
+                    else:
+                        rows_skipped += 1
+                        
+                except Exception as e:
+                    logger.warning(f"Error procesando fila {row_idx}: {e}")
+                    rows_skipped += 1
+                    continue
+            
+            logger.info(f"Catálogo procesado: {len(catalogo)} productos de {rows_processed} filas válidas")
+            if rows_skipped > 0:
+                logger.info(f"Filas ignoradas: {rows_skipped}")
+            
+            return catalogo
+            
+        except gspread.exceptions.SpreadsheetNotFound:
+            raise RuntimeError(
+                f"SPREADSHEET_NOT_FOUND: No se encontró la hoja de cálculo con ID {self.sheet_id}. "
+                "Verifica que el ID sea correcto y que la cuenta de servicio tenga acceso."
+            )
+        except gspread.exceptions.WorksheetNotFound:
+            raise RuntimeError(
+                f"WORKSHEET_NOT_FOUND: No se encontró la hoja del catálogo. "
+                "Verifica que la hoja exista y que el GID sea correcto."
+            )
+        except gspread.exceptions.APIError as e:
+            error_msg = str(e).lower()
+            if "permission" in error_msg or "denied" in error_msg:
+                raise RuntimeError(
+                    "PERMISSION_DENIED: No tienes permisos para acceder a esta hoja. "
+                    "Verifica que la cuenta de servicio tenga acceso de lectura."
+                )
+            else:
+                raise RuntimeError(f"Error del API de Google Sheets: {e}")
+        except Exception as e:
+            logger.error(f"Error inesperado obteniendo catálogo: {e}")
+            raise RuntimeError(f"Error inesperado: {e}")
+    
+    def obtener_estado_catalogo(self):
+        """
+        Obtiene información del estado del catálogo
+        """
+        try:
+            # Verificar conexión
+            test_cell = self.worksheet.acell('A1').value
+            
+            # Obtener información básica
+            all_values = self.worksheet.get_all_values()
+            
+            return {
+                "success": True,
+                "conectado": True,
+                "nombre_hoja": self.worksheet.title,
+                "total_filas": len(all_values),
+                "total_columnas": len(all_values[0]) if all_values else 0,
+                "headers": all_values[0] if all_values else [],
+                "url": f"https://docs.google.com/spreadsheets/d/{self.sheet_id}"
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "conectado": False,
+                "error": str(e)
+            }
+
+# Función de compatibilidad para mantener la API existente
 def obtener_catalogo():
     """
-    Descarga el catálogo desde Google Sheets y devuelve un dict {ID: Nombre}
+    Función de compatibilidad que usa la nueva clase CatalogService
     """
     try:
-        logger.info("Descargando catálogo desde Google Sheets...")
-        
-        # Construir URL desde configuración
-        sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
-        gid = GOOGLE_SHEETS_CONFIG["GID"]
-        timeout = GOOGLE_SHEETS_CONFIG["TIMEOUT"]
-        
-        gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?gid={gid}"
-        
-        r = requests.get(gviz_url, timeout=timeout)
-        
-        if r.status_code != 200:
-            logger.error(f"Error HTTP {r.status_code} al acceder a Google Sheets")
-            raise RuntimeError(f"No se pudo acceder a Google Sheets (HTTP {r.status_code})")
-
-        # Elimina el prefijo/sufijo raro de Google
-        texto = r.text
-        if not texto.startswith("/*O_o*/"):
-            logger.error("Respuesta inesperada de Google Sheets")
-            raise RuntimeError("Formato de respuesta inesperado de Google Sheets")
-            
-        json_str = texto[47:-2]
-        
-        try:
-            data = json.loads(json_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parseando JSON: {e}")
-            raise RuntimeError("Error parseando respuesta de Google Sheets")
-
-        if "table" not in data or "cols" not in data["table"]:
-            logger.error("Estructura de datos inesperada")
-            raise RuntimeError("Estructura de datos inesperada en Google Sheets")
-
-        cols = [c["label"].strip() if c and "label" in c else "" for c in data["table"]["cols"]]
-        logger.info(f"Columnas encontradas: {cols}")
-        
-        idx_id = next((i for i, c in enumerate(cols) if c.lower() == "id"), None)
-        idx_nombre = next((i for i, c in enumerate(cols) if "nombre" in c.lower()), None)
-
-        if idx_id is None or idx_nombre is None:
-            logger.error(f"No se encontraron columnas ID/Nombre. ID: {idx_id}, Nombre: {idx_nombre}")
-            raise RuntimeError("No se encontraron columnas ID/Nombre en el Sheets")
-
-        catalogo = {}
-        rows_processed = 0
-        
-        for row in data["table"]["rows"]:
-            c = row.get("c", [])
-            if not c: 
-                continue
-                
-            id_val = c[idx_id]["v"] if idx_id < len(c) and c[idx_id] else None
-            nombre_val = c[idx_nombre]["v"] if idx_nombre < len(c) and c[idx_nombre] else None
-            
-            if id_val and nombre_val:
-                id_clean = str(id_val).strip().upper()
-                nombre_clean = str(nombre_val).strip()
-                catalogo[id_clean] = nombre_clean
-                rows_processed += 1
-
-        logger.info(f"Catálogo procesado: {len(catalogo)} productos de {rows_processed} filas")
-        return catalogo
-
-    except requests.RequestException as e:
-        logger.error(f"Error de conexión: {e}")
-        raise RuntimeError(f"Error de conexión: {e}")
+        service = CatalogService()
+        return service.obtener_catalogo()
     except Exception as e:
-        logger.error(f"Error inesperado: {e}")
-        raise RuntimeError(f"Error inesperado: {e}")
+        logger.error(f"Error en obtener_catalogo(): {e}")
+        raise

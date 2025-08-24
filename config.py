@@ -1,13 +1,24 @@
 """
 Configuración centralizada para Milo Store ERP
 """
+import os
+import json
+
+# Cargar variables de entorno desde archivo .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("⚠️ python-dotenv no está instalado. Instala con: pip install python-dotenv")
 
 # Configuración de Google Sheets
 GOOGLE_SHEETS_CONFIG = {
-    "SHEET_ID": "1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM",
-    "GID": "561161202",
-    "TIMEOUT": 10,  # segundos
-    "RETRY_ATTEMPTS": 3
+    "SHEET_ID": os.getenv("GOOGLE_SHEETS_SHEET_ID", "1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM"),
+    "SHEET_NAME": os.getenv("GOOGLE_SHEETS_SHEET_NAME", "Ingreso Diario"),
+    "CATALOG_GID": os.getenv("GOOGLE_SHEETS_CATALOG_GID", "180421919"),  # GID de la hoja "Códigos Stock" (catálogo)
+    "TIMEOUT": int(os.getenv("GOOGLE_SHEETS_TIMEOUT", "10")),  # segundos
+    "RETRY_ATTEMPTS": int(os.getenv("GOOGLE_SHEETS_RETRY_ATTEMPTS", "3")),
+    "CREDENTIALS": json.loads(os.getenv("GOOGLE_SHEETS_CREDENTIALS", "{}"))
 }
 
 # Configuración de la aplicación
