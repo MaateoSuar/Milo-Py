@@ -63,18 +63,11 @@ def listar_ventas():
     return list(_ventas)
 
 def agregar_venta(data: dict):
+    """Agrega una venta SOLO a la memoria local, NO a Google Sheets automáticamente"""
     venta = _normalizar_venta(data)
     _ventas.append(venta)
-    
-    # Agregar también al Google Sheet
-    try:
-        resultado = _sheets_writer.agregar_venta_a_sheets(venta)
-        if resultado["success"]:
-            print(f"✅ Venta agregada a Google Sheets en fila {resultado['fila']}")
-        else:
-            print(f"⚠️ Error agregando a Google Sheets: {resultado['error']}")
-    except Exception as e:
-        print(f"⚠️ Error con Google Sheets: {e}")
+    print(f"✅ Venta agregada a la memoria local (índice: {len(_ventas) - 1})")
+    print(f"   NOTA: La venta NO se exportó a Google Sheets. Usa 'Exportar a Google Sheets' cuando estés listo.")
 
 def actualizar_venta(index: int, data: dict):
     if index < 0 or index >= len(_ventas):
@@ -90,3 +83,44 @@ def eliminar_venta(index: int):
 def obtener_estado_sheets():
     """Obtiene el estado del Google Sheet"""
     return _sheets_writer.obtener_estado_sheets()
+
+def exportar_todas_las_ventas_a_sheets():
+    """Exporta TODAS las ventas acumuladas en memoria a Google Sheets de forma RÁPIDA"""
+    if not _ventas:
+        return {
+            "success": False,
+            "error": "NO_HAY_VENTAS",
+            "mensaje": "No hay ventas para exportar. Agrega algunas ventas primero."
+        }
+    
+    try:
+        print(f"🚀 Exportando {len(_ventas)} ventas a Google Sheets (MODO RÁPIDO)...")
+        
+        # Usar el método de escritura en lote para máxima velocidad
+        resultado = _sheets_writer.agregar_multiples_ventas_a_sheets(_ventas)
+        
+        if resultado["success"]:
+            print(f"✅ {len(_ventas)} ventas exportadas exitosamente a Google Sheets")
+            
+            # OPCIONAL: Limpiar ventas después de exportar exitosamente
+            # ventas_exportadas = _ventas.copy()
+            # _ventas.clear()
+            # print(f"🧹 Ventas limpiadas de la memoria local después de exportar")
+            
+            return {
+                "success": True,
+                "ventas_exportadas": len(_ventas),
+                "mensaje": f"Exportado con éxito"
+            }
+        else:
+            print(f"❌ Error exportando ventas: {resultado.get('error', 'Error desconocido')}")
+            return resultado
+            
+    except Exception as e:
+        error_msg = f"Error exportando ventas: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {
+            "success": False,
+            "error": "EXPORT_ERROR",
+            "mensaje": error_msg
+        }

@@ -136,9 +136,17 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const data = await response.json();
             console.log('Respuesta de exportación:', data);
+            console.log('data.success:', data.success);
+            console.log('data.mensaje:', data.mensaje);
             
             // Mostrar notificación de éxito
-            mostrarNotificacion('✅ Excel generado correctamente', 'success');
+            if (data.success) {
+                const mensaje = data.mensaje || 'Exportado con éxito';
+                console.log('Mostrando mensaje:', mensaje);
+                mostrarNotificacion(`✅ ${mensaje}`, 'success');
+            } else {
+                throw new Error(data.mensaje || 'Error desconocido en la exportación');
+            }
             
             // Mostrar enlace de descarga
             downloadLink.classList.remove('hidden');

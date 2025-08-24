@@ -892,3 +892,145 @@ class GoogleSheetsWriter:
         except Exception as e:
             logger.error(f"Error intentando quitar protección: {e}")
             return {"success": False, "error": str(e)}
+    
+    def agregar_multiples_ventas_a_sheets(self, ventas):
+        """
+        Exporta múltiples ventas a Google Sheets de forma ULTRA RÁPIDA usando operaciones en lote
+        """
+        if not ventas:
+            return {
+                "success": False,
+                "error": "NO_HAY_VENTAS",
+                "mensaje": "No hay ventas para exportar"
+            }
+        
+        try:
+            logger.info(f"🚀 EXPORTACIÓN RÁPIDA: {len(ventas)} ventas a Google Sheets...")
+            
+            # Obtener la próxima fila vacía
+            proxima_fila = self.obtener_ultima_fila_confiable()
+            
+            # Preparar todas las filas de datos en una sola operación
+            filas_datos = []
+            for venta in ventas:
+                fila_datos = self.preparar_fila_venta(venta)
+                filas_datos.append(fila_datos)
+            
+            # Asegurar capacidad de la hoja
+            filas_necesarias = proxima_fila + len(ventas)
+            if not self.asegurar_capacidad_hoja(filas_necesarias + 5):
+                logger.warning("No se pudo asegurar capacidad de la hoja, continuando...")
+            
+            # Verificar si la hoja está protegida
+            hoja_protegida = self._verificar_si_hoja_protegida()
+            logger.info(f"Hoja protegida: {hoja_protegida}")
+            
+            # EXPORTACIÓN RÁPIDA: Intentar escribir todas las filas de una vez
+            try:
+                if hoja_protegida:
+                    # Hoja protegida: escribir solo en columnas libres usando batch_update
+                    logger.info("🔄 Usando método rápido para hoja protegida...")
+                    
+                    # Preparar operaciones en lote para columnas libres
+                    batch_operations = []
+                    for i, fila_datos in enumerate(filas_datos):
+                        fila_actual = proxima_fila + i
+                        
+                        # Solo escribir en columnas que sabemos que están libres
+                        # A, B, C, E, F, H, J, L (basado en el código existente)
+                        columnas_libres = [
+                            ('A', fila_actual, fila_datos[0]),   # Fecha
+                            ('B', fila_actual, fila_datos[1]),   # Notas
+                            ('C', fila_actual, fila_datos[2]),   # ID
+                            ('E', fila_actual, fila_datos[4]),   # Precio
+                            ('F', fila_actual, fila_datos[5]),   # Unidades
+                            ('H', fila_actual, fila_datos[7]),   # Costo U
+                            ('J', fila_actual, fila_datos[9]),   # Forma de pago
+                            ('L', fila_actual, fila_datos[11])   # Margen
+                        ]
+                        
+                        for col, row, value in columnas_libres:
+                            batch_operations.append({
+                                'range': f'{col}{row}',
+                                'values': [[value]]
+                            })
+                    
+                    # Ejecutar todas las operaciones en una sola llamada
+                    if batch_operations:
+                        self.worksheet.batch_update(batch_operations)
+                        logger.info(f"✅ {len(ventas)} ventas exportadas en lote (hoja protegida)")
+                        
+                        # Guardar en CSV local
+                        csv_file = self.data_dir / "ventas_para_sheets.csv"
+                        with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+                            writer = csv.writer(f)
+                            for fila_datos in filas_datos:
+                                writer.writerow(fila_datos)
+                        
+                        return {
+                            "success": True,
+                            "ventas_exportadas": len(ventas),
+                            "mensaje": f"✅ {len(ventas)} ventas exportadas exitosamente a Google Sheets (MODO RÁPIDO)"
+                        }
+                else:
+                    # Hoja NO protegida: usar el método más rápido posible
+                    logger.info("🔄 Usando método ultra rápido para hoja sin protección...")
+                    
+                    # Escribir todas las filas de una vez usando range
+                    range_name = f"A{proxima_fila}:L{proxima_fila + len(ventas) - 1}"
+                    self.worksheet.update(range_name, filas_datos, value_input_option='USER_ENTERED')
+                    
+                    logger.info(f"✅ {len(ventas)} ventas exportadas en lote (hoja sin protección)")
+                    
+                    # Guardar en CSV local
+                    csv_file = self.data_dir / "ventas_para_sheets.csv"
+                    with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        for fila_datos in filas_datos:
+                            writer.writerow(fila_datos)
+                    
+                    return {
+                        "success": True,
+                        "ventas_exportadas": len(ventas),
+                        "mensaje": f"✅ {len(ventas)} ventas exportadas exitosamente a Google Sheets (MODO ULTRA RÁPIDO)"
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Método rápido falló, usando método tradicional: {e}")
+                
+                # Fallback al método tradicional si el rápido falla
+                ventas_exitosas = 0
+                errores = []
+                
+                for i, venta in enumerate(ventas):
+                    try:
+                        resultado = self.agregar_venta_a_sheets(venta)
+                        if resultado["success"]:
+                            ventas_exitosas += 1
+                        else:
+                            errores.append(f"Venta {i+1}: {resultado.get('error', 'Error desconocido')}")
+                    except Exception as e2:
+                        errores.append(f"Venta {i+1}: {str(e2)}")
+                
+                if ventas_exitosas == len(ventas):
+                    return {
+                        "success": True,
+                        "ventas_exportadas": ventas_exitosas,
+                        "mensaje": f"✅ {ventas_exitosas} ventas exportadas exitosamente a Google Sheets (método tradicional)"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "EXPORT_FAILED",
+                        "errores": errores,
+                        "mensaje": f"⚠️ {ventas_exitosas}/{len(ventas)} ventas exportadas. {len(errores)} errores."
+                    }
+                
+        except Exception as e:
+            error_msg = f"Error en exportación rápida: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            return {
+                "success": False,
+                "error": "EXPORT_ERROR",
+                "mensaje": error_msg
+            }

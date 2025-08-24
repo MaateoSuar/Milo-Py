@@ -3,6 +3,7 @@ from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets
 from services.export_service import exportar_a_google_sheets
 from services.catalog_service import obtener_catalogo
+from config import GOOGLE_SHEETS_CONFIG
 
 app = Flask(__name__)
 
@@ -46,16 +47,16 @@ def api_eliminar_venta(index: int):
 # Exportar a Google Sheets
 @app.route("/api/exportar", methods=["POST"])
 def api_exportar():
-    ventas = listar_ventas()
-    resultado = exportar_a_google_sheets(ventas)
+    """Exporta TODAS las ventas acumuladas en memoria a Google Sheets"""
+    from services.sales_service import exportar_todas_las_ventas_a_sheets
+    resultado = exportar_todas_las_ventas_a_sheets()
     return jsonify(resultado), 200
 
 # Redirigir a Google Sheets
-@app.route("/download/excel", methods=["GET"])
-def download_excel():
-    # Redirigir a la hoja de Google Sheets
-    sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
-    return redirect(f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+@app.route("/download/sheets", methods=["GET"])
+def download_sheets():
+    # Redirigir a la hoja específica de Google Sheets
+    return redirect("https://docs.google.com/spreadsheets/d/1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM/edit?gid=561161202#gid=561161202")
 
 @app.route("/api/catalogo", methods=["GET"])
 def api_catalogo():
