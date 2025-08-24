@@ -98,8 +98,7 @@ def exportar_excel(path: Path = EXCEL_FILE) -> Path:
 
 def exportar_a_google_sheets(ventas: list[dict] = None) -> dict:
     """
-    Exporta las ventas a Google Sheets, manejando automáticamente la creación de nuevas hojas
-    cuando se alcance el límite de filas.
+    Exporta las ventas a Google Sheets de manera optimizada.
     """
     if ventas is None:
         ventas = listar_ventas()
@@ -123,7 +122,7 @@ def exportar_a_google_sheets(ventas: list[dict] = None) -> dict:
         try:
             worksheet = sheet.worksheet(GOOGLE_SHEETS_CONFIG["SHEET_NAME"])
         except gspread.WorksheetNotFound:
-            # Si no existe la hoja, crearla
+            # Si no existe la hoja, crearla con un tamaño inicial más grande
             worksheet = sheet.add_worksheet(
                 title=GOOGLE_SHEETS_CONFIG["SHEET_NAME"], 
                 rows=1000, 
@@ -131,70 +130,44 @@ def exportar_a_google_sheets(ventas: list[dict] = None) -> dict:
             )
             # Agregar encabezados
             worksheet.append_row(COLUMNS)
-            last_row = 1
-            return _escribir_datos(worksheet, ventas, last_row)
-        
-        # Obtener todas las filas y encontrar la última con datos
-        all_values = worksheet.get_all_values()
-        
-        # Encontrar la última fila con datos reales
-        last_non_empty_row = 0
-        for i, row in enumerate(all_values, 1):
-            if any(cell.strip() for cell in row):
-                last_non_empty_row = i
-        
-        # La siguiente fila disponible es después de la última con datos
-        next_row = last_non_empty_row + 1
-        
-        # Si la hoja está vacía, agregar encabezados
-        if last_non_empty_row == 0:
-            worksheet.append_row(COLUMNS)
-            next_row = 2  # Empezar a escribir desde la fila 2
-        
-        # Verificar si hay suficiente espacio
-        max_rows = 1000  # Un límite razonable para empezar
-        if next_row + len(ventas) - 1 > max_rows:
-            # Buscar filas vacías para reutilizar
-            empty_rows = []
-            for i, row in enumerate(all_values, 1):
-                if i > last_non_empty_row:
-                    break
-                if not any(cell.strip() for cell in row):
-                    empty_rows.append(i)
+            next_row = 2  # Empezar desde la fila 2 (después de los encabezados)
+        else:
+            # Usar col_values que es más rápido que get_all_values()
+            col_a = worksheet.col_values(1)
+            next_row = len(col_a) + 1 if col_a else 1
             
-            # Si hay suficientes filas vacías, usarlas
-            if len(empty_rows) >= len(ventas):
-                next_row = empty_rows[0]
-            else:
-                return {
-                    "success": False,
-                    "message": f"No hay suficiente espacio en la hoja. Por favor, limpia filas vacías o crea una nueva hoja."
-                }
+            # Si la hoja está vacía, agregar encabezados
+            if next_row == 1:
+                worksheet.append_row(COLUMNS)
+                next_row = 2
         
-        # Preparar datos para exportar
-        datos = []
+        # Preparar datos para exportar en un solo lote
+        batch_data = []
         for venta in ventas:
-            datos.append([
+            batch_data.append([
                 venta.get("fecha", ""),  # Fecha
                 venta.get("notas", ""),   # Notas
                 venta.get("id", ""),       # Id
                 venta.get("nombre", ""),   # Nombre del Elemento
                 venta.get("precio", ""),   # Precio
                 venta.get("unidades", ""), # Unidades
-                venta.get("precio", ""),   # Precio Unitario (mismo que Precio)
+                venta.get("precio", ""),   # Precio Unitario
                 "",                        # Costo U (vacío)
                 ""                         # Tipo (vacío)
             ])
         
-        # Escribir los datos en la siguiente fila disponible
-        if datos:
-            # Usar range para especificar exactamente dónde escribir (A a I para 9 columnas)
-            range_name = f"A{next_row}:I{next_row + len(datos) - 1}"
-            worksheet.update(range_name, datos, value_input_option='USER_ENTERED')
+        # Escribir todos los datos en un solo lote
+        if batch_data:
+            # Calcular el rango de destino
+            end_row = next_row + len(batch_data) - 1
+            range_name = f"A{next_row}:I{end_row}"
+            
+            # Usar actualización por lotes para mejor rendimiento
+            worksheet.update(range_name, batch_data, value_input_option='USER_ENTERED')
         
         return {
             "success": True,
-            "message": f"Se exportaron {len(ventas)} ventas correctamente (fila {next_row} a {next_row + len(datos) - 1})",
+            "message": "Exportado con éxito",
             "url": f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_CONFIG['SHEET_ID']}/edit#gid={worksheet.id}"
         }
         

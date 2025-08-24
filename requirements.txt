@@ -1,4 +1,8 @@
-flask
-pandas
-openpyxl
-requests
+flask==2.3.3
+pandas==2.1.0
+openpyxl==3.1.2
+requests==2.31.0
+gspread==5.11.3
+oauth2client==4.1.3
+python-dotenv==1.0.0
+Werkzeug==2.3.7

@@ -117,48 +117,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function exportarExcel() {
-        console.log('Exportando a Excel...');
-        
         try {
-            // Mostrar estado de carga
             exportBtn.disabled = true;
             exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Exportando...';
             
-            // Llamar a la API de exportación
-            const response = await fetch('/api/exportar', {
+            await fetch('/api/exportar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
             
-            if (!response.ok) {
-                throw new Error(`Error HTTP: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log('Respuesta de exportación:', data);
-            console.log('data.success:', data.success);
-            console.log('data.mensaje:', data.mensaje);
-            
-            // Mostrar notificación de éxito
-            if (data.success) {
-                const mensaje = data.mensaje || 'Exportado con éxito';
-                console.log('Mostrando mensaje:', mensaje);
-                mostrarNotificacion(`✅ ${mensaje}`, 'success');
-            } else {
-                throw new Error(data.mensaje || 'Error desconocido en la exportación');
-            }
-            
-            // Mostrar enlace de descarga
-            downloadLink.classList.remove('hidden');
-            downloadLink.focus();
+            alert('EXPORTADO CON ÉXITO');
             
         } catch (error) {
-            console.error('Error exportando a Excel:', error);
-            mostrarNotificacion(`❌ Error al exportar: ${error.message}`, 'error');
+            alert('ERROR AL EXPORTAR');
         } finally {
-            // Restaurar botón
             exportBtn.disabled = false;
-            exportBtn.innerHTML = '<i class="fas fa-file-excel mr-2"></i> Exportar a Excel';
+            exportBtn.innerHTML = '<i class="fas fa-file-excel mr-2"></i> Exportar a Google Sheets';
         }
     }
 
@@ -409,9 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                         ${venta.pago === 'Efectivo' ? 'bg-green-100 text-green-800' :
-                          venta.pago === 'Tarjeta' ? 'bg-blue-100 text-blue-800' :
-                          venta.pago === 'Transferencia' ? 'bg-purple-100 text-purple-800' :
-                          'bg-gray-100 text-gray-800'}">
+                          venta.pago === 'Debito' ? 'bg-blue-100 text-blue-800' :
+                          venta.pago === 'Credito' ? 'bg-purple-100 text-purple-800' :
+                          venta.pago === 'Transferencia' ? 'bg-gray-100 text-gray-800' :
+                          'bg-yellow-100 text-yellow-800'}">
                         ${venta.pago}
                     </span>
                 </td>

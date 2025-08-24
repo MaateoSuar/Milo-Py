@@ -62,3 +62,4 @@ backups/
 *.xlsx
 *.csv
 data/
+.vercel
