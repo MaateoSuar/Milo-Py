@@ -81,3 +81,6 @@ Fecha,Notas,ID,Nombre del Elemento,Precio,Unidades,Precio Unitario,Costo U,Tipo,
 24/08,HOla matute de nuevo,AP1,Accesorios p/pelo Rango de precio 1,$2.00,2,$2.00,Sin stock,,Efectivo,$4.00,$4.00
 25/08,Carterita,CA3,Carteras/Piedras Rango de precio 3,"$25,000.00",2,"$25,000.00",Sin stock,,Debito,"$50,000.00","$50,000.00"
 25/08,Anillo,AN3,Anillos Rango de precio 3,"$2,300.00",4,"$2,300.00",Sin stock,,Credito,"$9,200.00","$9,200.00"
+25/08,Test Debito,A3,Aritos Rango de precio 3,$23.00,23,$23.00,Sin stock,,Débito,$529.00,$529.00
+25/08,"Test ""VALUE""",AN2,Anillos Rango de precio 2,$23.00,23,$23.00,Sin stock,,Credito,$529.00,$529.00
+25/08,Test Value,AN2,Anillos Rango de precio 2,23.0,232,23.0,Sin stock,,Efectivo,5336.0,5336.0

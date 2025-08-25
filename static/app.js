@@ -126,8 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' }
             });
             
-            alert('EXPORTADO CON ÉXITO');
-            
         } catch (error) {
             alert('ERROR AL EXPORTAR');
         } finally {

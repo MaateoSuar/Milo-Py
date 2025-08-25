@@ -181,20 +181,20 @@ class GoogleSheetsWriter:
             fecha_obj = datetime.fromisoformat(venta["fecha"])
             fecha_formateada = fecha_obj.strftime("%d/%m")
             
-            # Preparar fila según las columnas del Google Sheet
+            # Preparar fila según el formato esperado
             fila = [
-                fecha_formateada,                    # A: Fecha
-                venta.get("notas", ""),             # B: Notas
-                venta["id"],                        # C: ID
-                venta["nombre"],                    # D: Nombre del Elemento
-                f"${venta['precio']:,.2f}",        # E: Precio
-                venta["unidades"],                  # F: Unidades
-                f"${precio_unitario:,.2f}",        # G: Precio Unitario
-                "Sin stock",                        # H: Costo U (por defecto)
-                "",                                 # I: Tipo (vacío por ahora)
-                venta["pago"],                      # J: Forma de pago
-                f"${costo_total:,.2f}",            # K: Costo Total
-                f"${margen:,.2f}"                  # L: Margen
+                fecha_obj.strftime("%d/%m"),                   # A: Fecha (DD/MM)
+                venta.get("notas", ""),                      # B: Notas
+                venta["id"],                                 # C: ID
+                venta["nombre"],                             # D: Nombre del Elemento
+                float(venta['precio']),                      # E: Precio (formato numérico)
+                int(venta["unidades"]),                     # F: Unidades (entero)
+                float(precio_unitario),                      # G: Precio Unitario (formato numérico)
+                "Sin stock",                                # H: Costo U (por defecto)
+                "",                                         # I: Tipo (vacío por ahora)
+                venta["pago"],                              # J: Forma de pago
+                float(costo_total),                          # K: Costo Total (formato numérico)
+                float(margen)                                # L: Margen (formato numérico)
             ]
             
             # Normalizar la fila
