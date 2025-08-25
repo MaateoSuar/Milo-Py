@@ -74,3 +74,10 @@ Fecha,Notas,ID,Nombre del Elemento,Precio,Unidades,Precio Unitario,Costo U,Tipo,
 24/08,25,A2,Aritos Rango de precio 2,$25.00,25,$25.00,Sin stock,,Efectivo,$625.00,$625.00
 24/08,2,AN2,Anillos Rango de precio 2,$2.00,2,$2.00,Sin stock,,Credito,$4.00,$4.00
 24/08,Hola Matias!,C2,Collar Rango de precio 2,$20.00,3,$20.00,Sin stock,,Credito,$60.00,$60.00
+24/08,tset,A2,Aritos Rango de precio 2,$2.00,1,$2.00,Sin stock,,Efectivo,$2.00,$2.00
+24/08,hola tute,C1,Collar Rango de precio 1,"$2,323.00",32323,"$2,323.00",Sin stock,,Efectivo,"$75,086,329.00","$75,086,329.00"
+24/08,dfsdf,C1,Collar Rango de precio 1,"$22,323.00",33,"$22,323.00",Sin stock,,Efectivo,"$736,659.00","$736,659.00"
+24/08,Hola Matias,CI3,Cintos Rango de precio 3,$250.00,250,$250.00,Sin stock,,Credito,"$62,500.00","$62,500.00"
+24/08,HOla matute de nuevo,AP1,Accesorios p/pelo Rango de precio 1,$2.00,2,$2.00,Sin stock,,Efectivo,$4.00,$4.00
+25/08,Carterita,CA3,Carteras/Piedras Rango de precio 3,"$25,000.00",2,"$25,000.00",Sin stock,,Debito,"$50,000.00","$50,000.00"
+25/08,Anillo,AN3,Anillos Rango de precio 3,"$2,300.00",4,"$2,300.00",Sin stock,,Credito,"$9,200.00","$9,200.00"
