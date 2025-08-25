@@ -84,3 +84,4 @@ Fecha,Notas,ID,Nombre del Elemento,Precio,Unidades,Precio Unitario,Costo U,Tipo,
 25/08,Test Debito,A3,Aritos Rango de precio 3,$23.00,23,$23.00,Sin stock,,Débito,$529.00,$529.00
 25/08,"Test ""VALUE""",AN2,Anillos Rango de precio 2,$23.00,23,$23.00,Sin stock,,Credito,$529.00,$529.00
 25/08,Test Value,AN2,Anillos Rango de precio 2,23.0,232,23.0,Sin stock,,Efectivo,5336.0,5336.0
+25/08,Test Value,AN2,Anillos Rango de precio 2,23.0,232,23.0,Sin stock,,Efectivo,5336.0,5336.0
