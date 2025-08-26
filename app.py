@@ -1,4 +1,6 @@
-from flask import Flask, render_template, request, jsonify, send_file, abort, redirect
+from flask import Flask, render_template, request, jsonify, send_file, abort, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from functools import wraps
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets
 from services.export_service import exportar_a_google_sheets
@@ -6,8 +8,60 @@ from services.catalog_service import obtener_catalogo
 from config import GOOGLE_SHEETS_CONFIG
 
 app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key in production
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# User class for authentication
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+# Hardcoded user (in production, use a database)
+USERS = {
+    'Milostore@gmail.com': {
+        'password': 'milostore2025',
+        'id': 1
+    }
+}
+
+@login_manager.user_loader
+def load_user(user_id):
+    for email, user_data in USERS.items():
+        if user_data['id'] == int(user_id):
+            return User(user_data['id'])
+    return None
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+        
+    if request.method == "POST":
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        if email in USERS and USERS[email]['password'] == password:
+            user = User(USERS[email]['id'])
+            login_user(user)
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('index'))
+        else:
+            flash('Correo o contraseña incorrectos', 'error')
+    
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 

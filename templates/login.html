@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Milo Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .bg-primary {
+            background-color: #c7bcb5;
+        }
+        .bg-secondary {
+            background-color: #dbd4bb;
+        }
+        .text-primary {
+            color: #5a4d41;
+        }
+        .border-primary {
+            border-color: #5a4d41;
+        }
+        .focus-ring:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px #5a4d41;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-primary flex items-center justify-center p-4">
+    <div class="w-full max-w-4xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col md:flex-row">
+        <!-- Image Section -->
+        <div class="w-full md:w-1/2 bg-secondary flex flex-col items-center justify-center p-8">
+            <div class="w-40 h-40 md:w-48 md:h-48 rounded-full border-4 border-white shadow-lg overflow-hidden mb-6">
+                <img src="{{ url_for('static', filename='img/login.jpg') }}" alt="Milo Store" class="w-full h-full object-cover">
+            </div>
+            <h2 class="text-2xl font-bold text-primary mb-2">Milo Store</h2>
+            <p class="text-primary text-center">Sistema de gestión de ventas</p>
+            <div class="mt-8 w-full max-w-xs">
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-primary opacity-30"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-secondary text-primary">Acceso exclusivo</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Form Section -->
+        <div class="w-full md:w-1/2 p-8 md:p-12">
+            <h1 class="text-3xl font-bold text-primary mb-2">Iniciar Sesión</h1>
+            <p class="text-gray-600 mb-8">Ingresa tus credenciales para acceder</p>
+
+            <form id="loginForm" method="POST" action="/login">
+                <div class="mb-6">
+                    <label for="email" class="block text-sm font-medium text-primary mb-2">Correo Electrónico</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-envelope text-primary"></i>
+                        </div>
+                        <input type="email" id="email" name="email" class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus-ring bg-gray-50 text-primary" placeholder="tu@email.com" required>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-primary mb-2">Contraseña</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-lock text-primary"></i>
+                        </div>
+                        <input type="password" id="password" name="password" class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus-ring bg-gray-50 text-primary" placeholder="••••••••" required>
+                        <button type="button" class="absolute right-3 top-3 text-primary" id="togglePassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="error-message" class="text-red-500 text-sm mb-4 hidden">
+                    Credenciales incorrectas. Intenta nuevamente.
+                </div>
+
+                <button type="submit" class="w-full bg-secondary hover:bg-opacity-90 text-primary font-bold py-3 px-4 rounded-lg transition duration-200">
+                    Ingresar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Toggle password visibility
+        const togglePassword = document.querySelector('#togglePassword');
+        const password = document.querySelector('#password');
+        
+        togglePassword.addEventListener('click', function() {
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            this.querySelector('i').classList.toggle('fa-eye');
+            this.querySelector('i').classList.toggle('fa-eye-slash');
+        });
+
+        // Handle form submission
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const response = await fetch('/login', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                document.getElementById('error-message').classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
