@@ -24,6 +24,26 @@
         .btn-primary:hover { background-color: #c9c1a8; }
         .btn-secondary { background-color: #C7BCB5; color: #5a5343; }
         .btn-secondary:hover { background-color: #b5a9a1; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c7bcb5;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #b5a9a1;
+        }
     </style>
 </head>
 <body class="gradient-bg min-h-screen flex">
@@ -206,8 +226,8 @@
                     </div>
                 </div>
 
-                <div class="overflow-x-auto scrollbar-hide">
-                    <table id="ventasTable" class="min-w-full divide-y divide-gray-200">
+                <div class="overflow-x-auto overflow-y-auto max-w-full" style="max-height: 70vh;">
+                    <table id="ventasTable" class="min-w-max w-full divide-y divide-gray-200">
                         <thead class="primary-bg">
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium primary-text uppercase tracking-wider">Fecha</th>
