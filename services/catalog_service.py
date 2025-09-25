@@ -2,6 +2,8 @@
 Servicio robusto para leer el catálogo desde Google Sheets
 Usa gspread directamente para mejor manejo de errores y permisos
 """
+import os
+import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import logging
@@ -24,9 +26,37 @@ class CatalogService:
                 "https://www.googleapis.com/auth/drive"
             ]
             
+            # Cargar credenciales desde variables/archivo/config
+            raw_env = (
+                os.getenv("GOOGLE_CREDENTIALS")
+                or os.getenv("GOOGLE_CREDENTIALS_JSON")
+                or os.getenv("GOOGLE_SHEETS_CREDENTIALS")
+            )
+
+            credentials = None
+            if raw_env:
+                try:
+                    credentials = json.loads(raw_env)
+                    logger.info("Credenciales cargadas desde variable de entorno")
+                except Exception as e:
+                    raise ValueError(f"GOOGLE_*_CREDENTIALS no es JSON válido: {e}")
+            else:
+                credentials = GOOGLE_SHEETS_CONFIG.get("CREDENTIALS", {})
+                if not credentials and os.path.exists("google_credentials.json"):
+                    with open("google_credentials.json", "r", encoding="utf-8") as f:
+                        credentials = json.load(f)
+                    logger.info("Credenciales cargadas desde archivo local")
+
+            if not isinstance(credentials, dict) or not credentials:
+                raise ValueError("No se encontraron credenciales válidas para el catálogo")
+
+            # Normalizar private_key si vino con "\\n"
+            if isinstance(credentials.get("private_key"), str):
+                credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
+
             # Configuración de credenciales
             self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                GOOGLE_SHEETS_CONFIG["CREDENTIALS"], 
+                credentials,
                 self.scope
             )
             
