@@ -9,21 +9,28 @@ restartPolicyMaxRetries = 10
 [build.args]
 NIXPKGS_CHANNEL = "nixpkgs-unstable"
 
-# Variables de entorno necesarias para la aplicación
+# Configuración de Python
 [build.environment]
 PYTHON_VERSION = "3.10.13"
 
-# Variables de entorno que el usuario debe configurar en Railway
+# Variables de entorno para la aplicación
 [deploy.environment]
 # Configuración de Flask
 FLASK_APP = "app.py"
 FLASK_ENV = "production"
-SECRET_KEY = "milo-store-secret-key-2024"  # Cambia esto por una clave secreta segura
+SECRET_KEY = "clave-secreta-segura-aqui"
 
 # Configuración de Google Sheets
 GOOGLE_SHEETS_SHEET_ID = "1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM"
 GOOGLE_SHEETS_SHEET_NAME = "Ingreso Diario"
 GOOGLE_SHEETS_CATALOG_GID = "180421919"
+
+# Configuración de la base de datos (si es necesaria)
+DATABASE_URL = "sqlite:///milo_store.db"
+
+# Configuración de seguridad
+DEBUG = "False"
+
 GOOGLE_SHEETS_TIMEOUT = "10"
 GOOGLE_SHEETS_RETRY_ATTEMPTS = "3"
 

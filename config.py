@@ -12,20 +12,45 @@ except ImportError:
     print("⚠️ python-dotenv no está instalado. Instala con: pip install python-dotenv")
 
 def get_google_credentials():
-    """Obtiene las credenciales de Google Sheets desde un archivo."""
+    """Obtiene las credenciales de Google Sheets desde variables de entorno o archivo."""
     try:
-        # Intenta cargar desde el archivo google_credentials.json
+        creds_dict = {}
+        
+        # Primero intenta cargar desde la variable de entorno
+        creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+        if creds_json:
+            try:
+                creds_dict = json.loads(creds_json)
+                print("✅ Credenciales cargadas desde variable de entorno")
+                return creds_dict
+            except json.JSONDecodeError as e:
+                print(f"❌ Error: GOOGLE_CREDENTIALS_JSON no es un JSON válido: {e}")
+        
+        # Si no está en variables de entorno, busca el archivo local
         creds_path = os.path.join(os.path.dirname(__file__), 'google_credentials.json')
         if os.path.exists(creds_path):
-            with open(creds_path, 'r') as f:
-                return json.load(f)
+            try:
+                with open(creds_path, 'r', encoding='utf-8') as f:
+                    creds_dict = json.load(f)
+                    print("✅ Credenciales cargadas desde archivo local")
+                    return creds_dict
+            except Exception as e:
+                print(f"❌ Error al leer el archivo de credenciales: {e}")
         
-        # Si no encuentra el archivo, muestra un mensaje de error
-        print("⚠️ No se encontró el archivo google_credentials.json")
+        # Si llegamos aquí, no se pudieron cargar las credenciales
+        error_msg = """
+        ⚠️ No se encontraron credenciales de Google Sheets.
+        Por favor, configura una de las siguientes opciones:
+        1. Variable de entorno GOOGLE_CREDENTIALS_JSON con el contenido del JSON de credenciales
+        2. Archivo google_credentials.json en el directorio raíz del proyecto
+        
+        Asegúrate de que las credenciales tengan el formato correcto y los permisos necesarios.
+        """
+        print(error_msg)
         return {}
         
     except Exception as e:
-        print(f"⚠️ Error al leer el archivo de credenciales: {e}")
+        print(f"❌ Error inesperado al cargar credenciales: {e}")
         return {}
 
 # Configuración de Google Sheets

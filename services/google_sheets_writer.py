@@ -2,6 +2,8 @@
 Servicio robusto para escribir ventas en Google Sheets existente
 Maneja automáticamente límites de grilla, expansión de hojas y errores del API
 """
+import os
+import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import logging
@@ -14,40 +16,20 @@ logger = logging.getLogger(__name__)
 
 class GoogleSheetsWriter:
     def __init__(self):
-        try:
-            print("Inicializando GoogleSheetsWriter...")
-            self.sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
-            self.sheet_name = GOOGLE_SHEETS_CONFIG.get("SHEET_NAME", "Hoja 1")
-            self.scope = [
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            
-            print("Creando credenciales...")
-            # Configuración de credenciales
-            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                GOOGLE_SHEETS_CONFIG["CREDENTIALS"], 
-                self.scope
-            )
-            
-            print("Autorizando cliente...")
-            # Inicializar cliente
-            self.client = gspread.authorize(self.creds)
-            
-            print("Abriendo hoja de cálculo...")
-            # Abrir la hoja
-            self.spreadsheet = self.client.open_by_key(self.sheet_id)
-            print(f"Hojas disponibles: {self.spreadsheet.worksheets()}")
-            self.worksheet = self.spreadsheet.worksheet(self.sheet_name)
-            print("Hoja abierta exitosamente!")
-            
-        except Exception as e:
-            error_msg = f"Error al inicializar GoogleSheetsWriter: {str(e)}"
-            print(error_msg)
-            logger.error(error_msg)
-            raise
+        """Inicializa el cliente de Google Sheets con manejo robusto de credenciales."""
+        # Inicializar atributos básicos
+        self.sheet_id = ""
+        self.sheet_name = "Hoja 1"
+        self.scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        self.creds = None
+        self.client = None
+        self.spreadsheet = None
+        self.worksheet = None
         
-        # Directorio para archivos temporales
+        # Configuración del directorio de datos
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
         
@@ -57,6 +39,150 @@ class GoogleSheetsWriter:
             "Unidades", "Precio Unitario", "Costo U", "Tipo", 
             "Forma de Pago", "Costo Total", "Margen"
         ]
+        
+        try:
+            print("\n=== Inicializando GoogleSheetsWriter ===")
+            
+            # 1. Verificar configuración básica
+            if not GOOGLE_SHEETS_CONFIG.get("SHEET_ID"):
+                raise ValueError("No se encontró SHEET_ID en la configuración")
+                
+            self.sheet_id = GOOGLE_SHEETS_CONFIG["SHEET_ID"]
+            self.sheet_name = GOOGLE_SHEETS_CONFIG.get("SHEET_NAME", "Hoja 1")
+            
+            # 2. Obtener/validar credenciales
+            print("\n🔍 Validando credenciales...")
+            # Fuentes soportadas (en orden):
+            #  - GOOGLE_CREDENTIALS (Railway UI habitual para Node)
+            #  - GOOGLE_CREDENTIALS_JSON
+            #  - GOOGLE_SHEETS_CREDENTIALS (usada por config.py)
+            #  - Archivo local google_credentials.json
+            raw_env = (
+                os.getenv("GOOGLE_CREDENTIALS")
+                or os.getenv("GOOGLE_CREDENTIALS_JSON")
+                or os.getenv("GOOGLE_SHEETS_CREDENTIALS")
+            )
+
+            credentials = None
+            if raw_env:
+                try:
+                    credentials = json.loads(raw_env)
+                except Exception as e:
+                    raise ValueError(f"GOOGLE_*_CREDENTIALS no es JSON válido: {e}")
+            elif os.path.exists("google_credentials.json"):
+                try:
+                    with open("google_credentials.json", "r", encoding="utf-8") as f:
+                        credentials = json.load(f)
+                except Exception as e:
+                    raise ValueError(f"No se pudo leer google_credentials.json: {e}")
+            else:
+                credentials = GOOGLE_SHEETS_CONFIG.get("CREDENTIALS", {})
+            
+            if not isinstance(credentials, dict) or not credentials:
+                raise ValueError("No se encontraron credenciales válidas en la configuración")
+                
+            # 3. Normalizar private_key y verificar campos obligatorios
+            required_fields = ["type", "project_id", "private_key_id", "private_key", 
+                             "client_email", "client_id", "token_uri"]
+            missing_fields = [field for field in required_fields if field not in credentials]
+            
+            if missing_fields:
+                raise ValueError(f"Credenciales incompletas. Faltan campos: {', '.join(missing_fields)}")
+
+            # Normalizar salto de línea de la clave privada si vino con "\\n"
+            if isinstance(credentials.get("private_key"), str):
+                credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
+                
+            # 4. Crear credenciales
+            self._initialize_credentials(credentials)
+            
+            # 5. Inicializar cliente y conectar con Google Sheets
+            self._initialize_client()
+            
+        except Exception as e:
+            error_msg = f"❌ Error al inicializar GoogleSheetsWriter: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            print(error_msg)
+            raise
+            
+    def _initialize_credentials(self, credentials):
+        """Inicializa las credenciales de Google Sheets."""
+        try:
+            print("🔑 Creando credenciales de servicio...")
+            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                credentials, 
+                self.scope
+            )
+            print("✅ Credenciales validadas correctamente")
+            print(f"   Cuenta de servicio: {credentials.get('client_email')}")
+            
+        except Exception as e:
+            error_msg = f"❌ Error al crear credenciales: {str(e)}"
+            if "Invalid private key" in str(e):
+                error_msg += "\n   La clave privada parece estar mal formateada o es inválida"
+            elif "No key could be detected" in str(e):
+                error_msg += "\n   No se pudo detectar la clave privada en las credenciales"
+            raise ValueError(error_msg) from e
+    
+    def _initialize_client(self):
+        """Inicializa el cliente de Google Sheets y configura la hoja de trabajo."""
+        try:
+            print("\n🔌 Conectando con Google Sheets API...")
+            self.client = gspread.authorize(self.creds)
+            print("✅ Conexión exitosa con Google Sheets API")
+            
+            # Abrir la hoja de cálculo
+            print(f"\n📂 Abriendo hoja de cálculo con ID: {self.sheet_id}")
+            self.spreadsheet = self.client.open_by_key(self.sheet_id)
+            print(f"✅ Hoja de cálculo abierta: '{self.spreadsheet.title}'")
+            
+            # Obtener o crear la hoja específica
+            self._setup_worksheet()
+            
+            # Verificar permisos de escritura
+            self._verify_write_permissions()
+            
+        except gspread.exceptions.APIError as e:
+            error_msg = f"❌ Error de la API de Google Sheets: {str(e)}"
+            if "PERMISSION_DENIED" in str(e):
+                error_msg += "\n🔑 Error de permisos. Verifica que:"
+                error_msg += f"\n   1. La cuenta de servicio {self.creds.service_account_email} tenga acceso a la hoja"
+                error_msg += "\n   2. La hoja de cálculo sea accesible (compartida con la cuenta de servicio)"
+                error_msg += "\n   3. Los permisos de la hoja permitan la edición"
+            elif "Unable to parse range" in str(e):
+                error_msg += "\n📄 Error en el rango. Verifica que el nombre de la hoja sea correcto"
+            raise Exception(error_msg) from e
+            
+        except Exception as e:
+            error_msg = f"❌ Error al inicializar el cliente de Google Sheets: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            print(error_msg)
+            if "invalid_grant" in str(e):
+                print("🔑 Error de autenticación. Verifica que las credenciales sean válidas y no hayan expirado")
+            raise
+    
+    def _setup_worksheet(self):
+        """Configura la hoja de trabajo, creándola si no existe."""
+        print(f"\n📝 Buscando hoja: '{self.sheet_name}'")
+        try:
+            self.worksheet = self.spreadsheet.worksheet(self.sheet_name)
+            print(f"✅ Hoja '{self.sheet_name}' encontrada y lista para usar")
+        except gspread.WorksheetNotFound:
+            print(f"⚠️ La hoja '{self.sheet_name}' no fue encontrada. Intentando crear...")
+            self.worksheet = self.spreadsheet.add_worksheet(
+                title=self.sheet_name, 
+                rows=100, 
+                cols=20
+            )
+            print(f"✅ Hoja '{self.sheet_name}' creada exitosamente")
+    
+    def _verify_write_permissions(self):
+        """Verifica que se tengan permisos de escritura en la hoja."""
+        try:
+            test_cell = f'A{self.obtener_ultima_fila_confiable() + 1}'
+            self.worksheet.update(test_cell, "", raw=False)
+        except Exception as e:
+            print(f"⚠️ Advertencia: No se pudo escribir en la hoja. Verifica los permisos de escritura: {e}")
     
     def obtener_ultima_fila_confiable(self):
         """

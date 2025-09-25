@@ -4,8 +4,18 @@ from .google_sheets_writer import GoogleSheetsWriter
 # Estructura en memoria
 _ventas = []  # lista de dicts: {fecha,id,nombre,precio,unidades,total,pago,notas}
 
-# Instancia del escritor de Google Sheets
-_sheets_writer = GoogleSheetsWriter()
+# Instancia del escritor de Google Sheets (lazy)
+_sheets_writer = None
+
+def _get_sheets_writer():
+    global _sheets_writer
+    if _sheets_writer is None:
+        try:
+            _sheets_writer = GoogleSheetsWriter()
+        except Exception as e:
+            print(f"⚠️ No se pudo inicializar GoogleSheetsWriter: {e}")
+            _sheets_writer = None
+    return _sheets_writer
 
 def _normalizar_venta(data: dict) -> dict:
     """
@@ -82,7 +92,14 @@ def eliminar_venta(index: int):
 
 def obtener_estado_sheets():
     """Obtiene el estado del Google Sheet"""
-    return _sheets_writer.obtener_estado_sheets()
+    writer = _get_sheets_writer()
+    if writer is None:
+        return {
+            "success": False,
+            "error": "GOOGLE_SHEETS_NOT_AVAILABLE",
+            "mensaje": "Credenciales de Google Sheets no disponibles"
+        }
+    return writer.obtener_estado_sheets()
 
 def exportar_todas_las_ventas_a_sheets():
     """Exporta TODAS las ventas acumuladas en memoria a Google Sheets de forma RÁPIDA"""
@@ -96,8 +113,16 @@ def exportar_todas_las_ventas_a_sheets():
     try:
         print(f"🚀 Exportando {len(_ventas)} ventas a Google Sheets (MODO RÁPIDO)...")
         
+        writer = _get_sheets_writer()
+        if writer is None:
+            return {
+                "success": False,
+                "error": "GOOGLE_SHEETS_NOT_AVAILABLE",
+                "mensaje": "Credenciales de Google Sheets no disponibles"
+            }
+
         # Usar el método de escritura en lote para máxima velocidad
-        resultado = _sheets_writer.agregar_multiples_ventas_a_sheets(_ventas)
+        resultado = writer.agregar_multiples_ventas_a_sheets(_ventas)
         
         if resultado["success"]:
             print(f"✅ {len(_ventas)} ventas exportadas exitosamente a Google Sheets")
