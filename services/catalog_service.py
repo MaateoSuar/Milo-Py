@@ -83,14 +83,18 @@ class CatalogService:
     
     def obtener_catalogo(self):
         """
-        Descarga el catálogo desde Google Sheets y devuelve un dict {ID: Nombre}
+        Descarga el catálogo desde Google Sheets y devuelve un diccionario con la estructura:
+        {
+            "ID1": {"nombre": "Nombre Producto 1", "precio": 1000},
+            "ID2": {"nombre": "Nombre Producto 2", "precio": 2000},
+            ...
+        }
         """
         try:
             logger.info("Descargando catálogo desde Google Sheets...")
             
             # Verificar permisos primero
             try:
-                # Intentar leer una celda para verificar permisos
                 test_cell = self.worksheet.acell('A1').value
                 logger.info("Permisos de lectura verificados correctamente")
             except gspread.exceptions.APIError as e:
@@ -114,12 +118,14 @@ class CatalogService:
             headers = all_values[0]
             logger.info(f"Headers encontrados: {headers}")
             
-            # Buscar columnas de ID y Nombre de forma flexible
+            # Buscar columnas de forma flexible
             patrones_id = ["id", "código", "sku", "codigo", "producto_id"]
             patrones_nombre = ["nombre", "descripción", "descripcion", "producto", "item", "elemento"]
+            patrones_precio = ["precio", "valor", "costo", "precio_venta", "venta"]
             
             idx_id = self.buscar_columna_flexible(headers, patrones_id)
             idx_nombre = self.buscar_columna_flexible(headers, patrones_nombre)
+            idx_precio = self.buscar_columna_flexible(headers, patrones_precio)
             
             if idx_id is None:
                 raise RuntimeError(
@@ -128,9 +134,15 @@ class CatalogService:
                 )
             
             if idx_nombre is None:
-                raise RuntimeError(
-                    f"No se encontró columna de Nombre. Headers disponibles: {headers}. "
-                    f"Patrones buscados: {patrones_nombre}"
+                logger.warning(
+                    f"No se encontró columna de Nombre. Usando 'Producto Desconocido'. "
+                    f"Headers disponibles: {headers}. Patrones buscados: {patrones_nombre}"
+                )
+            
+            if idx_precio is None:
+                logger.warning(
+                    f"No se encontró columna de Precio. Usando 0 como valor por defecto. "
+                    f"Headers disponibles: {headers}. Patrones buscados: {patrones_precio}"
                 )
             
             # Procesar filas de datos (excluyendo headers)
@@ -138,28 +150,47 @@ class CatalogService:
             rows_processed = 0
             rows_skipped = 0
             
-            for row_idx, row in enumerate(all_values[1:], start=2):  # start=2 porque las filas empiezan en 1
+            for row_idx, row in enumerate(all_values[1:], start=2):
                 try:
                     # Verificar que la fila tenga suficientes columnas
-                    if len(row) <= max(idx_id, idx_nombre):
+                    max_col = max(
+                        idx_id if idx_id is not None else 0,
+                        idx_nombre if idx_nombre is not None else 0,
+                        idx_precio if idx_precio is not None else 0
+                    )
+                    
+                    if len(row) <= max_col:
                         logger.debug(f"Fila {row_idx} ignorada: insuficientes columnas")
                         rows_skipped += 1
                         continue
                     
-                    # Obtener valores de ID y Nombre
-                    id_val = row[idx_id]
-                    nombre_val = row[idx_nombre]
+                    # Obtener valores de las columnas
+                    id_val = row[idx_id] if idx_id is not None and len(row) > idx_id else ""
+                    nombre_val = row[idx_nombre] if idx_nombre is not None and len(row) > idx_nombre else "Producto Desconocido"
+                    precio_val = row[idx_precio] if idx_precio is not None and len(row) > idx_precio else "0"
                     
                     # Limpiar y validar valores
-                    if id_val and nombre_val:
+                    if id_val:
                         id_clean = str(id_val).strip()
                         nombre_clean = str(nombre_val).strip()
                         
-                        # Solo agregar si ambos valores son válidos
-                        if id_clean and nombre_clean and id_clean.lower() not in ['', 'n/a', 'null', 'none']:
+                        # Limpiar y convertir el precio
+                        try:
+                            # Eliminar símbolos de moneda y espacios
+                            precio_limpio = str(precio_val).replace('$', '').replace(' ', '').replace(',', '.').strip()
+                            precio_float = float(precio_limpio) if precio_limpio else 0.0
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Error convirtiendo precio '{precio_val}' a número: {e}")
+                            precio_float = 0.0
+                        
+                        # Solo agregar si el ID es válido
+                        if id_clean and id_clean.lower() not in ['', 'n/a', 'null', 'none']:
                             # Convertir ID a mayúsculas para consistencia
                             id_clean = id_clean.upper()
-                            catalogo[id_clean] = nombre_clean
+                            catalogo[id_clean] = {
+                                'nombre': nombre_clean,
+                                'precio': precio_float
+                            }
                             rows_processed += 1
                         else:
                             rows_skipped += 1

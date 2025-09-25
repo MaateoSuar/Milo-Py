@@ -11,6 +11,23 @@ try:
 except ImportError:
     print("⚠️ python-dotenv no está instalado. Instala con: pip install python-dotenv")
 
+def get_google_credentials():
+    """Obtiene las credenciales de Google Sheets desde un archivo."""
+    try:
+        # Intenta cargar desde el archivo google_credentials.json
+        creds_path = os.path.join(os.path.dirname(__file__), 'google_credentials.json')
+        if os.path.exists(creds_path):
+            with open(creds_path, 'r') as f:
+                return json.load(f)
+        
+        # Si no encuentra el archivo, muestra un mensaje de error
+        print("⚠️ No se encontró el archivo google_credentials.json")
+        return {}
+        
+    except Exception as e:
+        print(f"⚠️ Error al leer el archivo de credenciales: {e}")
+        return {}
+
 # Configuración de Google Sheets
 GOOGLE_SHEETS_CONFIG = {
     "SHEET_ID": os.getenv("GOOGLE_SHEETS_SHEET_ID", "1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM"),
@@ -18,7 +35,7 @@ GOOGLE_SHEETS_CONFIG = {
     "CATALOG_GID": os.getenv("GOOGLE_SHEETS_CATALOG_GID", "180421919"),  # GID de la hoja "Códigos Stock" (catálogo)
     "TIMEOUT": int(os.getenv("GOOGLE_SHEETS_TIMEOUT", "10")),  # segundos
     "RETRY_ATTEMPTS": int(os.getenv("GOOGLE_SHEETS_RETRY_ATTEMPTS", "3")),
-    "CREDENTIALS": json.loads(os.getenv("GOOGLE_SHEETS_CREDENTIALS", "{}"))
+    "CREDENTIALS": get_google_credentials()
 }
 
 # Configuración de la aplicación

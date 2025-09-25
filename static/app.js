@@ -53,8 +53,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ======== CARGA INICIAL =========
-    cargarCatalogo();
-    cargarVentas();
+    console.log('Iniciando carga inicial...');
+    cargarCatalogo().then(() => {
+        console.log('Catálogo cargado, cargando ventas...');
+        return cargarVentas();
+    }).catch(error => {
+        console.error('Error en carga inicial:', error);
+        mostrarNotificacion(`Error en carga inicial: ${error.message}`, 'error');
+    });
 
     // ======== CATALOGO (Sheets vía backend) =========
     async function cargarCatalogo() {
@@ -63,40 +69,146 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/catalogo');
             
             if (!res.ok) {
+                const errorText = await res.text();
+                console.error('Error en la respuesta del servidor:', errorText);
                 throw new Error(`HTTP ${res.status}: ${res.statusText}`);
             }
             
             const data = await res.json();
+            console.log('Datos recibidos del servidor:', data);
             
             if (data.error) {
                 throw new Error(data.error);
             }
 
+            // Verificar que los datos tengan el formato esperado
+            if (typeof data !== 'object' || Object.keys(data).length === 0) {
+                console.warn('El catálogo está vacío o tiene un formato inesperado');
+                mostrarNotificacion('El catálogo está vacío o no tiene el formato esperado', 'warning');
+                return;
+            }
+
             productosPorID = data;
-            console.log('Catálogo cargado:', productosPorID);
+            console.log('Catálogo cargado con éxito. Número de productos:', Object.keys(productosPorID).length);
 
             // Llenar el dropdown de IDs
             llenarDropdownIDs();
             
+            return data; // Retornamos los datos para manejar la promesa
+            
         } catch (error) {
             console.error('Error cargando catálogo:', error);
             mostrarNotificacion(`Error cargando catálogo: ${error.message}`, 'error');
+            throw error; // Relanzamos el error para manejarlo en la cadena de promesas
         }
     }
 
     function llenarDropdownIDs() {
-        // Limpiar opciones existentes (mantener la primera opción)
-        inputID.innerHTML = '<option value="">Selecciona un ID...</option>';
-        
-        // Agregar opciones de productos
-        Object.keys(productosPorID).sort().forEach(id => {
-            const option = document.createElement('option');
-            option.value = id;
-            option.textContent = `${id} - ${productosPorID[id]}`;
-            inputID.appendChild(option);
-        });
-        
-        console.log(`Dropdown llenado con ${Object.keys(productosPorID).length} productos`);
+        try {
+            console.log('Llenando dropdown con productos...');
+            
+            // Limpiar opciones existentes (mantener la primera opción)
+            inputID.innerHTML = '<option value="">Selecciona un ID...</option>';
+            
+            // Verificar que hay productos
+            const ids = Object.keys(productosPorID);
+            if (ids.length === 0) {
+                console.warn('No hay productos para mostrar en el dropdown');
+                mostrarNotificacion('No se encontraron productos en el catálogo', 'warning');
+                return;
+            }
+            
+            // Ordenar los IDs
+            const idsOrdenados = [...ids].sort((a, b) => {
+                // Ordenar por precio si está disponible, de lo contrario por ID
+                const precioA = parseFloat(productosPorID[a]?.precio) || 0;
+                const precioB = parseFloat(productosPorID[b]?.precio) || 0;
+                return precioA - precioB;
+            });
+            
+            // Encontrar precios mínimo y máximo para el placeholder
+            let minPrecio = Infinity;
+            let maxPrecio = 0;
+            
+            idsOrdenados.forEach(id => {
+                const precio = parseFloat(productosPorID[id]?.precio);
+                if (!isNaN(precio)) {
+                    if (precio < minPrecio) minPrecio = precio;
+                    if (precio > maxPrecio) maxPrecio = precio;
+                }
+            });
+            
+            // Si no se encontraron precios válidos, usar valores por defecto
+            if (minPrecio === Infinity) minPrecio = 1;
+            if (maxPrecio === 0) maxPrecio = 1000000;
+            
+            // Establecer el placeholder inicial con el rango de precios
+            inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
+            
+            // Agregar opciones de productos
+            idsOrdenados.forEach(id => {
+                try {
+                    const producto = productosPorID[id];
+                    const nombre = producto?.nombre || 'Sin nombre';
+                    const precio = producto?.precio ? `($${producto.precio})` : '';
+                    
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = `${id} - ${nombre} ${precio}`;
+                    
+                    // Agregar tooltip con información adicional
+                    option.title = `ID: ${id}\nNombre: ${nombre}\nPrecio: $${producto?.precio || 'N/A'}`;
+                    
+                    // Almacenar el precio en el dataset para fácil acceso
+                    option.dataset.precio = producto?.precio || '';
+                    
+                    inputID.appendChild(option);
+                } catch (error) {
+                    console.error(`Error procesando producto con ID ${id}:`, error);
+                }
+            });
+            
+            console.log(`Dropdown llenado con ${idsOrdenados.length} productos`);
+            
+            // Configurar evento para actualizar el placeholder cuando se seleccione un ID
+            inputID.addEventListener('change', function() {
+                const selectedOption = this.options[this.selectedIndex];
+                if (selectedOption && selectedOption.value) {
+                    const producto = productosPorID[selectedOption.value];
+                    if (producto) {
+                        // Si el producto tiene precio, mostrarlo en el placeholder
+                        if (producto.precio) {
+                            inputPrecio.placeholder = `Precio: $${producto.precio}`;
+                            inputPrecio.value = producto.precio; // Rellenar automáticamente el precio
+                        } else {
+                            inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
+                            inputPrecio.value = '';
+                        }
+                        
+                        // Rellenar automáticamente el nombre
+                        inputNombre.value = producto.nombre || '';
+                        
+                        // Focus en el campo de precio
+                        inputPrecio.focus();
+                        
+                        setHelper(`✅ ID seleccionado: ${selectedOption.value}`, true);
+                    }
+                } else {
+                    // Restaurar el placeholder por defecto si no hay selección
+                    inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
+                    inputPrecio.value = '';
+                    inputNombre.value = '';
+                    setHelper('Selecciona un ID del catálogo', false);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error al llenar el dropdown:', error);
+            mostrarNotificacion('Error al cargar la lista de productos', 'error');
+            
+            // Establecer un placeholder por defecto en caso de error
+            inputPrecio.placeholder = '$1 a $1000000';
+        }
     }
 
     function setHelper(msg, ok) {
