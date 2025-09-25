@@ -126,24 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return precioA - precioB;
             });
             
-            // Encontrar precios mínimo y máximo para el placeholder
-            let minPrecio = Infinity;
-            let maxPrecio = 0;
-            
-            idsOrdenados.forEach(id => {
-                const precio = parseFloat(productosPorID[id]?.precio);
-                if (!isNaN(precio)) {
-                    if (precio < minPrecio) minPrecio = precio;
-                    if (precio > maxPrecio) maxPrecio = precio;
-                }
-            });
-            
-            // Si no se encontraron precios válidos, usar valores por defecto
-            if (minPrecio === Infinity) minPrecio = 1;
-            if (maxPrecio === 0) maxPrecio = 1000000;
-            
-            // Establecer el placeholder inicial
-            inputPrecio.placeholder = '0';
+            // Establecer un placeholder simple y fijo
+            inputPrecio.placeholder = "Ingresa el precio";
             
             // Agregar opciones de productos
             idsOrdenados.forEach(id => {
@@ -176,14 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (selectedOption && selectedOption.value) {
                     const producto = productosPorID[selectedOption.value];
                     if (producto) {
-                        // Si el producto tiene precio, mostrarlo en el placeholder
-                        if (producto.precio) {
-                            inputPrecio.placeholder = '0';
-                            inputPrecio.value = producto.precio; // Rellenar automáticamente el precio
+                        // Si el producto tiene precio, mostrarlo solo en el placeholder
+                        if (producto.precio && producto.precio > 0) {
+                            inputPrecio.placeholder = `Precio sugerido: $${producto.precio}`;
                         } else {
-                            inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
-                            inputPrecio.value = '';
+                            inputPrecio.placeholder = "Ingresa el precio";
                         }
+                        inputPrecio.value = ''; // Mantener el campo vacío siempre
                         
                         // Rellenar automáticamente el nombre
                         inputNombre.value = producto.nombre || '';
@@ -195,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else {
                     // Restaurar el placeholder por defecto si no hay selección
-                    inputPrecio.placeholder = '0';
+                    inputPrecio.placeholder = "Ingresa el precio";
                     inputPrecio.value = '';
                     inputNombre.value = '';
                     setHelper('Selecciona un ID del catálogo', false);
@@ -207,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mostrarNotificacion('Error al cargar la lista de productos', 'error');
             
             // Establecer un placeholder por defecto en caso de error
-            inputPrecio.placeholder = '$1 a $1000000';
+            inputPrecio.placeholder = "Ingresa el precio";
         }
     }
 
