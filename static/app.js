@@ -142,8 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (minPrecio === Infinity) minPrecio = 1;
             if (maxPrecio === 0) maxPrecio = 1000000;
             
-            // Establecer el placeholder inicial con el rango de precios
-            inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
+            // Establecer el placeholder inicial
+            inputPrecio.placeholder = '0';
             
             // Agregar opciones de productos
             idsOrdenados.forEach(id => {
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (producto) {
                         // Si el producto tiene precio, mostrarlo en el placeholder
                         if (producto.precio) {
-                            inputPrecio.placeholder = `Precio: $${producto.precio}`;
+                            inputPrecio.placeholder = '0';
                             inputPrecio.value = producto.precio; // Rellenar automáticamente el precio
                         } else {
                             inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else {
                     // Restaurar el placeholder por defecto si no hay selección
-                    inputPrecio.placeholder = `$${minPrecio} a $${maxPrecio}`;
+                    inputPrecio.placeholder = '0';
                     inputPrecio.value = '';
                     inputNombre.value = '';
                     setHelper('Selecciona un ID del catálogo', false);
