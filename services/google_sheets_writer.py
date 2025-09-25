@@ -288,14 +288,14 @@ class GoogleSheetsWriter:
     def preparar_fila_venta(self, venta):
         """Prepara los datos de la venta en el formato del Google Sheet"""
         try:
-            # Calcular precio unitario
+            # El precio que ingresa el usuario es el precio unitario
             precio_unitario = round(venta["precio"], 2)
             
-            # Calcular costo total (asumiendo que es igual al precio por ahora)
-            costo_total = round(venta["precio"] * venta["unidades"], 2)
+            # Calcular precio total (precio unitario × unidades)
+            precio_total = round(precio_unitario * venta["unidades"], 2)
             
-            # Calcular margen (precio - costo, asumiendo costo = 0 por ahora)
-            margen = costo_total
+            # Calcular margen (precio total - costo, asumiendo costo = 0 por ahora)
+            margen = precio_total
             
             # Formato de fecha para el sheet (DD/MM)
             fecha_obj = datetime.fromisoformat(venta["fecha"])
@@ -307,13 +307,13 @@ class GoogleSheetsWriter:
                 venta.get("notas", ""),                      # B: Notas
                 venta["id"],                                 # C: ID
                 venta["nombre"],                             # D: Nombre del Elemento
-                float(venta['precio']),                      # E: Precio (formato numérico)
+                float(precio_total),                         # E: Precio (precio total = precio unitario × unidades)
                 int(venta["unidades"]),                     # F: Unidades (entero)
-                float(precio_unitario),                      # G: Precio Unitario (formato numérico)
+                float(precio_unitario),                      # G: Precio Unitario (precio por unidad)
                 "Sin stock",                                # H: Costo U (por defecto)
                 "",                                         # I: Tipo (vacío por ahora)
                 venta["pago"],                              # J: Forma de pago
-                float(costo_total),                          # K: Costo Total (formato numérico)
+                float(precio_total),                         # K: Costo Total (mismo que precio total)
                 float(margen)                                # L: Margen (formato numérico)
             ]
             
