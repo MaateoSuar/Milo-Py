@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+google_credentials.json
 
 # Archivos de Python
 __pycache__/
