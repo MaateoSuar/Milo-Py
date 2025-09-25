@@ -54,14 +54,8 @@ class CatalogService:
             if isinstance(credentials.get("private_key"), str):
                 credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
 
-            # Configuración de credenciales
-            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                credentials,
-                self.scope
-            )
-            
-            # Inicializar cliente
-            self.client = gspread.authorize(self.creds)
+            # Inicializar cliente con helper de gspread (usa google-auth)
+            self.client = gspread.service_account_from_dict(credentials)
             
             # Abrir la hoja
             self.spreadsheet = self.client.open_by_key(self.sheet_id)

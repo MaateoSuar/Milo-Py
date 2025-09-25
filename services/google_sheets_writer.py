@@ -5,7 +5,6 @@ Maneja automáticamente límites de grilla, expansión de hojas y errores del AP
 import os
 import json
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -93,7 +92,7 @@ class GoogleSheetsWriter:
             if isinstance(credentials.get("private_key"), str):
                 credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
                 
-            # 4. Crear credenciales
+            # 4. Crear credenciales / cliente
             self._initialize_credentials(credentials)
             
             # 5. Inicializar cliente y conectar con Google Sheets
@@ -106,29 +105,24 @@ class GoogleSheetsWriter:
             raise
             
     def _initialize_credentials(self, credentials):
-        """Inicializa las credenciales de Google Sheets."""
+        """Inicializa el cliente de Google Sheets usando google-auth vía gspread."""
         try:
-            print("🔑 Creando credenciales de servicio...")
-            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                credentials, 
-                self.scope
-            )
-            print("✅ Credenciales validadas correctamente")
+            print("🔑 Creando cliente de servicio con gspread.service_account_from_dict...")
+            # gspread gestiona internamente google-auth con este helper
+            self.client = gspread.service_account_from_dict(credentials)
+            print("✅ Cliente de Google Sheets creado correctamente")
             print(f"   Cuenta de servicio: {credentials.get('client_email')}")
-            
         except Exception as e:
-            error_msg = f"❌ Error al crear credenciales: {str(e)}"
-            if "Invalid private key" in str(e):
-                error_msg += "\n   La clave privada parece estar mal formateada o es inválida"
-            elif "No key could be detected" in str(e):
-                error_msg += "\n   No se pudo detectar la clave privada en las credenciales"
+            error_msg = f"❌ Error al crear cliente de Google Sheets: {str(e)}"
             raise ValueError(error_msg) from e
     
     def _initialize_client(self):
         """Inicializa el cliente de Google Sheets y configura la hoja de trabajo."""
         try:
             print("\n🔌 Conectando con Google Sheets API...")
-            self.client = gspread.authorize(self.creds)
+            # self.client ya se creó en _initialize_credentials
+            if not self.client:
+                raise RuntimeError("Cliente de Google Sheets no inicializado")
             print("✅ Conexión exitosa con Google Sheets API")
             
             # Abrir la hoja de cálculo

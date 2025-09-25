@@ -126,5 +126,19 @@ def api_sheets_status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Endpoint de verificación rápida
+@app.route("/test_sheets", methods=["GET"])
+def test_sheets():
+    try:
+        from services.sales_service import _get_sheets_writer
+        writer = _get_sheets_writer()
+        if writer is None:
+            return jsonify({"status": "error", "error": "No hay cliente de Google Sheets"}), 500
+        # Listar títulos de hojas disponibles
+        sheets = [ws.title for ws in writer.spreadsheet.worksheets()]
+        return jsonify({"status": "ok", "sheets": sheets})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(debug=True)
