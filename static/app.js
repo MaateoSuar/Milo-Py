@@ -41,7 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
     inputID.addEventListener('change', function() {
         const selectedID = this.value;
         if (selectedID && productosPorID[selectedID]) {
-            inputNombre.value = productosPorID[selectedID];
+            const productoSel = productosPorID[selectedID];
+            inputNombre.value = (productoSel && productoSel.nombre) ? productoSel.nombre : '';
             setHelper(`✅ ID seleccionado: ${selectedID}`, true);
             
             // Focus en el siguiente campo (precio)
@@ -118,12 +119,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Ordenar los IDs
+            // Ordenar los IDs de forma "natural": prefijo alfabético + número (A1, A2, ..., AN1)
+            const naturalKey = (id) => {
+                const m = String(id).toUpperCase().match(/^([A-Z]+)(\d+)$/);
+                if (m) {
+                    return { letters: m[1], number: parseInt(m[2], 10), raw: id };
+                }
+                // Fallback para IDs que no siguen el patrón
+                return { letters: String(id).toUpperCase(), number: Number.MAX_SAFE_INTEGER, raw: id };
+            };
+
             const idsOrdenados = [...ids].sort((a, b) => {
-                // Ordenar por precio si está disponible, de lo contrario por ID
-                const precioA = parseFloat(productosPorID[a]?.precio) || 0;
-                const precioB = parseFloat(productosPorID[b]?.precio) || 0;
-                return precioA - precioB;
+                const ka = naturalKey(a);
+                const kb = naturalKey(b);
+                if (ka.letters < kb.letters) return -1;
+                if (ka.letters > kb.letters) return 1;
+                if (ka.number < kb.number) return -1;
+                if (ka.number > kb.number) return 1;
+                // Si empatan, ordenar por valor crudo
+                return String(ka.raw).localeCompare(String(kb.raw));
             });
             
             // Establecer un placeholder simple y fijo
@@ -134,17 +148,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const producto = productosPorID[id];
                     const nombre = producto?.nombre || 'Sin nombre';
-                    const precio = producto?.precio ? `($${producto.precio})` : '';
                     
                     const option = document.createElement('option');
                     option.value = id;
-                    option.textContent = `${id} - ${nombre} ${precio}`;
+                    // Mostrar SOLO ID y nombre, sin precios ni textos extra
+                    option.textContent = `${id} - ${nombre}`;
                     
-                    // Agregar tooltip con información adicional
-                    option.title = `ID: ${id}\nNombre: ${nombre}\nPrecio: $${producto?.precio || 'N/A'}`;
+                    // Tooltip sin precio
+                    option.title = `ID: ${id}\nNombre: ${nombre}`;
                     
-                    // Almacenar el precio en el dataset para fácil acceso
-                    option.dataset.precio = producto?.precio || '';
+                    // No almacenar precio en dataset para evitar usos accidentales
                     
                     inputID.appendChild(option);
                 } catch (error) {
@@ -160,12 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (selectedOption && selectedOption.value) {
                     const producto = productosPorID[selectedOption.value];
                     if (producto) {
-                        // Si el producto tiene precio, mostrarlo solo en el placeholder
-                        if (producto.precio && producto.precio > 0) {
-                            inputPrecio.placeholder = `Precio sugerido: $${producto.precio}`;
-                        } else {
-                            inputPrecio.placeholder = "Ingresa el precio";
-                        }
+                        // Mantener placeholder simple siempre
+                        inputPrecio.placeholder = "Ingresa el precio";
                         inputPrecio.value = ''; // Mantener el campo vacío siempre
                         
                         // Rellenar automáticamente el nombre

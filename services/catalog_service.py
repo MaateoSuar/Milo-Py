@@ -198,6 +198,20 @@ class CatalogService:
                         id_clean = str(id_val).strip()
                         nombre_clean = str(nombre_val).strip()
                         
+                        # Limpiar el nombre para quitar información de precio
+                        # Quitar cualquier patrón de precio que esté en el nombre
+                        import re
+                        # Quitar "precio sugerido" y patrones de moneda/números
+                        nombre_clean = re.sub(r'\bprecio\s*sugerido\b[:\-]?\s*', '', nombre_clean, flags=re.IGNORECASE)
+                        # Quitar patrones como "- $250", "-$250", "($250)", "$250", "2500 CLP", etc.
+                        nombre_clean = re.sub(r'\s*[-–]\s*\$?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*', '', nombre_clean)  # Quitar "- $250" o con miles
+                        nombre_clean = re.sub(r'\s*\(\$?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\)\s*', '', nombre_clean)  # Quitar "($250)"
+                        nombre_clean = re.sub(r'\s*\$?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*$', '', nombre_clean)  # Quitar precio al final
+                        nombre_clean = re.sub(r'\s*\$?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*', '', nombre_clean)  # Quitar precio en cualquier parte
+                        nombre_clean = re.sub(r'\s*Rango\s*de\s*precios\s*\d*\s*', '', nombre_clean, flags=re.IGNORECASE)  # Quitar "Rango de precios 1"
+                        nombre_clean = re.sub(r'\s*\d+\s*$', '', nombre_clean)  # Quitar números al final
+                        nombre_clean = nombre_clean.strip()
+                        
                         # Limpiar y convertir el precio
                         try:
                             # Eliminar símbolos de moneda y espacios
