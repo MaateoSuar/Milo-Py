@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let editIndex = null;
     let ventasCache = [];
     let lastAddedIndex = -1; // Para trackear el último elemento agregado
+    let rangosPrecios = {}; // Umbrales por grupo: { A: [0, 8000, 11600], AN: [0, 7600, 8000], ... }
 
     // ======== ELEMENTOS DOM =========
     const form = document.getElementById('ventaForm');
@@ -56,8 +57,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // ======== CARGA INICIAL =========
     console.log('Iniciando carga inicial...');
     cargarCatalogo().then(() => {
-        console.log('Catálogo cargado, cargando ventas...');
-        return cargarVentas();
+            console.log('Catálogo cargado, cargando rangos...');
+            return cargarRangos();
+        }).then(() => {
+            console.log('Rangos cargados, cargando ventas...');
+            return cargarVentas();
     }).catch(error => {
         console.error('Error en carga inicial:', error);
         mostrarNotificacion(`Error en carga inicial: ${error.message}`, 'error');
@@ -101,6 +105,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error cargando catálogo:', error);
             mostrarNotificacion(`Error cargando catálogo: ${error.message}`, 'error');
             throw error; // Relanzamos el error para manejarlo en la cadena de promesas
+        }
+    }
+
+    async function cargarRangos() {
+        try {
+            const res = await fetch('/api/rangos');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            rangosPrecios = (data && data.rangos && typeof data.rangos === 'object') ? data.rangos : {};
+            console.log('Rangos de precios:', rangosPrecios);
+        } catch (e) {
+            console.warn('No se pudieron cargar rangos, se usará placeholder simple');
+            rangosPrecios = {};
         }
     }
 
@@ -173,8 +190,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (selectedOption && selectedOption.value) {
                     const producto = productosPorID[selectedOption.value];
                     if (producto) {
-                        // Mantener placeholder simple siempre
-                        inputPrecio.placeholder = "Ingresa el precio";
+                        // Placeholder según rangos si existen
+                        const placeholderRango = calcularPlaceholderRango(selectedOption.value);
+                        inputPrecio.placeholder = placeholderRango || "Ingresa el precio";
                         inputPrecio.value = ''; // Mantener el campo vacío siempre
                         
                         // Rellenar automáticamente el nombre
@@ -201,6 +219,40 @@ document.addEventListener('DOMContentLoaded', () => {
             // Establecer un placeholder por defecto en caso de error
             inputPrecio.placeholder = "Ingresa el precio";
         }
+    }
+
+    function calcularPlaceholderRango(idSeleccionado) {
+        // Rango por grupo: usar solo IDs con el mismo prefijo de letras
+        const parseId = (id) => {
+            const m = String(id).toUpperCase().match(/^([A-Z]+)(\d+)$/);
+            return m ? { letters: m[1], number: parseInt(m[2], 10), raw: id } : { letters: '', number: 0, raw: id };
+        };
+        const sel = parseId(idSeleccionado);
+        const umbralesGrupo = rangosPrecios[sel.letters];
+        if (!Array.isArray(umbralesGrupo) || umbralesGrupo.length < 2) {
+            // Sin rangos suficientes, no mostrar sugerencia
+            return '';
+        }
+        const options = Array.from(inputID.options).filter(o => o.value);
+        const grupoOptions = options.filter(o => parseId(o.value).letters === sel.letters);
+        const idsGrupo = grupoOptions.map(o => o.value);
+
+        // Índice dentro del grupo
+        const idx = idsGrupo.indexOf(idSeleccionado);
+        if (idx === -1) return '';
+
+        // Usar el índice del grupo para mapear umbrales del grupo
+        const lower = umbralesGrupo[Math.min(idx, umbralesGrupo.length - 1)] ?? 0;
+        const upper = umbralesGrupo[idx + 1];
+
+        const fmt = (n) => {
+            if (typeof n !== 'number' || isNaN(n)) return '-';
+            return `$${n.toLocaleString('es-CL')}`;
+        };
+
+        const left = fmt(lower);
+        const right = (typeof upper === 'number') ? fmt(upper) : '-';
+        return `Precio sugerido: ${left} a ${right}`;
     }
 
     function setHelper(msg, ok) {

@@ -4,7 +4,7 @@ from functools import wraps
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas
 from services.export_service import exportar_a_google_sheets
-from services.catalog_service import obtener_catalogo
+from services.catalog_service import obtener_catalogo, obtener_rangos
 from config import GOOGLE_SHEETS_CONFIG
 
 app = Flask(__name__)
@@ -127,6 +127,13 @@ def api_catalogo():
         return jsonify(obtener_catalogo())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/rangos", methods=["GET"])
+def api_rangos():
+    try:
+        return jsonify({"rangos": obtener_rangos()})
+    except Exception as e:
+        return jsonify({"rangos": {}}), 200
 
 @app.route("/api/sheets/status", methods=["GET"])
 def api_sheets_status():

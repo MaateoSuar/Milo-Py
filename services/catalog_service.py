@@ -81,6 +81,26 @@ class CatalogService:
             error_msg = f"Error al inicializar CatalogService: {str(e)}"
             logger.error(error_msg)
             raise
+
+    def _normalize_title(self, s: str) -> str:
+        try:
+            import unicodedata
+            s_norm = unicodedata.normalize('NFKD', s)
+            s_ascii = ''.join(ch for ch in s_norm if not unicodedata.combining(ch))
+            return s_ascii.strip().lower()
+        except Exception:
+            return s.strip().lower()
+
+    def _get_worksheet_by_title(self, title: str):
+        """Obtiene una hoja por título ignorando acentos y mayúsculas/minúsculas"""
+        try:
+            wanted = self._normalize_title(str(title))
+            for ws in self.spreadsheet.worksheets():
+                if self._normalize_title(ws.title) == wanted:
+                    return ws
+        except Exception:
+            pass
+        return None
     
     def buscar_columna_flexible(self, headers, patrones_busqueda):
         """
@@ -116,6 +136,35 @@ class CatalogService:
         """
         try:
             logger.info("Descargando catálogo desde Google Sheets...")
+            
+            def parse_price_chilean(value_str: str) -> float:
+                try:
+                    if value_str is None:
+                        return 0.0
+                    v = str(value_str).replace('$', '').replace(' ', '').strip()
+                    # Formato chileno: miles con punto, decimales con coma
+                    if ',' in v and '.' in v:
+                        # 11.600,00 -> 11600.00
+                        v = v.replace('.', '').replace(',', '.')
+                    elif ',' in v:
+                        # 1,234 -> 1234  o  1234,56 -> 1234.56
+                        # Si hay una sola coma, asumir decimales
+                        parts = v.split(',')
+                        if len(parts) == 2 and parts[1].isdigit():
+                            v = parts[0].replace('.', '') + '.' + parts[1]
+                        else:
+                            v = v.replace(',', '')
+                    else:
+                        # Solo puntos: 11.600 -> 11600
+                        # Si parece miles, quitar puntos
+                        if v.count('.') >= 1 and (len(v.split('.')[-1]) != 3):
+                            # Caso raro: dejar como está
+                            pass
+                        else:
+                            v = v.replace('.', '')
+                    return float(v) if v else 0.0
+                except Exception:
+                    return 0.0
             
             # Verificar permisos primero
             try:
@@ -212,26 +261,18 @@ class CatalogService:
                         nombre_clean = re.sub(r'\s*\d+\s*$', '', nombre_clean)  # Quitar números al final
                         nombre_clean = nombre_clean.strip()
                         
-                        # Limpiar y convertir el precio
-                        try:
-                            # Eliminar símbolos de moneda y espacios
-                            precio_limpio = str(precio_val).replace('$', '').replace(' ', '').replace(',', '.').strip()
-                            precio_float = float(precio_limpio) if precio_limpio else 0.0
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"Error convirtiendo precio '{precio_val}' a número: {e}")
-                            precio_float = 0.0
-                        
-                        # Solo agregar si el ID es válido
-                        if id_clean and id_clean.lower() not in ['', 'n/a', 'null', 'none']:
-                            # Convertir ID a mayúsculas para consistencia
-                            id_clean = id_clean.upper()
-                            catalogo[id_clean] = {
-                                'nombre': nombre_clean,
-                                'precio': precio_float
-                            }
-                            rows_processed += 1
-                        else:
-                            rows_skipped += 1
+                    # Limpiar y convertir el precio (formato chileno)
+                    precio_float = parse_price_chilean(precio_val)
+
+                    # Solo agregar si el ID es válido
+                    if id_clean and id_clean.lower() not in ['', 'n/a', 'null', 'none']:
+                        # Convertir ID a mayúsculas para consistencia
+                        id_clean = id_clean.upper()
+                        catalogo[id_clean] = {
+                            'nombre': nombre_clean,
+                            'precio': precio_float
+                        }
+                        rows_processed += 1
                     else:
                         rows_skipped += 1
                         
@@ -297,6 +338,158 @@ class CatalogService:
                 "error": str(e)
             }
 
+    def obtener_rangos_precios(self):
+        """
+        Lee la pestaña "Codigos Stock" y devuelve una lista de umbrales ordenados numéricamente
+        según el número de rango en "Concepto":
+          Concepto = "Rango de precio N"  -> valor en la columna adyacente
+
+        Retorna: [rango1, rango2, rango3, ...] como floats
+        """
+        try:
+            # Aceptar "Códigos Stock" o "Codigos Stock" (con/sin acento)
+            ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
+            if ws is None:
+                raise RuntimeError("No se encontró la hoja 'Codigos Stock'")
+
+            values = ws.get_all_values()
+            if not values:
+                return []
+
+            import re
+            rangos = []
+            # Detectar "Rango de precio N" en cualquier columna y tomar valor de la columna siguiente
+            for row_idx, row in enumerate(values, start=1):
+                num_cols = len(row)
+                for col_idx in range(num_cols):
+                    concepto = (row[col_idx] or "").strip()
+                    m = re.search(r"rango\s*de\s*precio\s*(\d+)", concepto, re.IGNORECASE)
+                    if not m:
+                        continue
+                    numero = int(m.group(1))
+                    # valor es la celda siguiente si existe; si no, buscar la primera no vacía a la derecha
+                    valor_raw = ""
+                    if col_idx + 1 < num_cols:
+                        valor_raw = (row[col_idx + 1] or "").strip()
+                    if not valor_raw:
+                        for k in range(col_idx + 2, num_cols):
+                            if row[k] and str(row[k]).strip():
+                                valor_raw = str(row[k]).strip()
+                                break
+
+                    # Normalizar formato chileno
+                    try:
+                        v = str(valor_raw).replace('$', '').replace(' ', '').strip()
+                        if ',' in v and '.' in v:
+                            v = v.replace('.', '').replace(',', '.')
+                        elif ',' in v:
+                            parts = v.split(',')
+                            if len(parts) == 2 and parts[1].isdigit():
+                                v = parts[0].replace('.', '') + '.' + parts[1]
+                            else:
+                                v = v.replace(',', '')
+                        else:
+                            v = v.replace('.', '')
+                        valor = float(v) if v else 0.0
+                    except Exception:
+                        valor = 0.0
+
+                    rangos.append((numero, valor))
+
+            # Ordenar por el número de rango y devolver solo los valores
+            rangos.sort(key=lambda t: t[0])
+            return [val for (_, val) in rangos]
+        except Exception as e:
+            logger.error(f"Error obteniendo rangos de precios: {e}")
+            return []
+
+    def obtener_rangos_por_grupo(self):
+        """
+        Devuelve un dict con umbrales por grupo/prefijo de código (A, AN, C, ...)
+        Estructura esperada de filas (flexible): en alguna columna aparece "Rango de precio N",
+        en otra columna de la MISMA fila aparece el código tipo A1/AN2/C3, y a la derecha del
+        texto de rango aparece el valor con formato chileno ($11.600,00).
+        Retorna: { "A": [0, 8000, 11600], "AN": [0, 7600, 8000], ... }
+        """
+        try:
+            # Aceptar "Códigos Stock" o "Codigos Stock"
+            ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
+            if ws is None:
+                raise RuntimeError("No se encontró la hoja 'Codigos Stock'")
+
+            values = ws.get_all_values()
+            if not values:
+                return {}
+
+            import re
+            grupos_tmp = {}
+
+            for row in values:
+                num_cols = len(row)
+                # Detectar rango en la fila
+                rango_num = None
+                rango_col_idx = None
+                for col_idx in range(num_cols):
+                    texto = (row[col_idx] or "").strip()
+                    m = re.search(r"rango\s*de\s*precio\s*(\d+)", texto, re.IGNORECASE)
+                    if m:
+                        rango_num = int(m.group(1))
+                        rango_col_idx = col_idx
+                        break
+                if rango_num is None:
+                    continue
+
+                # Buscar código tipo A1 / AN2 en la misma fila
+                grupo_letras = None
+                for col_idx in range(num_cols):
+                    celda = (row[col_idx] or "").strip()
+                    mcode = re.match(r"^([A-Za-z]+)(\d+)$", celda)
+                    if mcode:
+                        grupo_letras = mcode.group(1).upper()
+                        break
+                if not grupo_letras:
+                    continue
+
+                # Valor a la derecha del texto de rango
+                valor_raw = ""
+                if rango_col_idx + 1 < num_cols:
+                    valor_raw = (row[rango_col_idx + 1] or "").strip()
+                if not valor_raw:
+                    for k in range(rango_col_idx + 2, num_cols):
+                        if row[k] and str(row[k]).strip():
+                            valor_raw = str(row[k]).strip()
+                            break
+
+                # Normalizar formato chileno
+                try:
+                    v = str(valor_raw).replace('$', '').replace(' ', '').strip()
+                    if ',' in v and '.' in v:
+                        v = v.replace('.', '').replace(',', '.')
+                    elif ',' in v:
+                        parts = v.split(',')
+                        if len(parts) == 2 and parts[1].isdigit():
+                            v = parts[0].replace('.', '') + '.' + parts[1]
+                        else:
+                            v = v.replace(',', '')
+                    else:
+                        v = v.replace('.', '')
+                    valor = float(v) if v else 0.0
+                except Exception:
+                    valor = 0.0
+
+                grupos_tmp.setdefault(grupo_letras, []).append((rango_num, valor))
+
+            # Ordenar cada grupo por N y devolver solo valores
+            resultado = {}
+            for grupo, pares in grupos_tmp.items():
+                pares.sort(key=lambda t: t[0])
+                resultado[grupo] = [val for (_, val) in pares]
+
+            return resultado
+        except Exception as e:
+            logger.error(f"Error obteniendo rangos de precios por grupo: {e}")
+            return {}
+
 # Función de compatibilidad para mantener la API existente
 def obtener_catalogo():
     """
@@ -308,3 +501,11 @@ def obtener_catalogo():
     except Exception as e:
         logger.error(f"Error en obtener_catalogo(): {e}")
         raise
+
+def obtener_rangos():
+    try:
+        service = CatalogService()
+        return service.obtener_rangos_por_grupo()
+    except Exception as e:
+        logger.error(f"Error en obtener_rangos(): {e}")
+        return {}
