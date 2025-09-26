@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_file, abort, re
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from functools import wraps
 from pathlib import Path
-from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets
+from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas
 from services.export_service import exportar_a_google_sheets
 from services.catalog_service import obtener_catalogo
 from config import GOOGLE_SHEETS_CONFIG
@@ -97,6 +97,15 @@ def api_eliminar_venta(index: int):
         return jsonify({"message": "Venta eliminada"}), 200
     except IndexError:
         return jsonify({"error": "Índice fuera de rango"}), 404
+
+@app.route("/api/ventas", methods=["DELETE"])
+def api_eliminar_todas_las_ventas():
+    """Vacía todas las ventas en memoria (confirmado desde el front)"""
+    try:
+        limpiar_ventas()
+        return jsonify({"message": "Todas las ventas fueron eliminadas"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Exportar a Google Sheets
 @app.route("/api/exportar", methods=["POST"])

@@ -90,6 +90,10 @@ def eliminar_venta(index: int):
         raise IndexError("Índice fuera de rango")
     _ventas.pop(index)
 
+def limpiar_ventas():
+    """Elimina todas las ventas en memoria"""
+    _ventas.clear()
+
 def obtener_estado_sheets():
     """Obtiene el estado del Google Sheet"""
     writer = _get_sheets_writer()

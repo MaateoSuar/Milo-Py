@@ -419,6 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmModal = document.getElementById('confirmModal');
     const confirmDeleteBtn = document.getElementById('confirmDelete');
     const confirmCancelBtn = document.getElementById('confirmCancel');
+    const clearAllBtn = document.getElementById('clearAllBtn');
 
     // Configurar eventos del modal
     if (confirmDeleteBtn && confirmCancelBtn) {
@@ -457,6 +458,85 @@ document.addEventListener('DOMContentLoaded', () => {
         
         confirmCancelBtn.addEventListener('click', () => {
             confirmModal.classList.add('hidden');
+        });
+    }
+
+    // Vaciar todas las ventas con confirmación
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', async () => {
+            try {
+                const confirmado = await confirmarAccionJSON({
+                    titulo: '¿Vaciar todas las ventas?',
+                    mensaje: 'Esta acción eliminará todas las ventas en memoria. No se puede deshacer.',
+                    confirmarTexto: 'Sí, vaciar',
+                    cancelarTexto: 'Cancelar'
+                });
+                if (!confirmado) return;
+
+                clearAllBtn.disabled = true;
+                clearAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Vaciando...';
+
+                const res = await fetch('/api/ventas', { method: 'DELETE' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error al vaciar ventas');
+
+                mostrarNotificacion('✅ ' + (data.message || 'Ventas vaciadas'), 'success');
+                await cargarVentas();
+            } catch (e) {
+                mostrarNotificacion(`❌ ${e.message}`, 'error');
+            } finally {
+                clearAllBtn.disabled = false;
+                clearAllBtn.innerHTML = '<i class="fas fa-trash mr-2"></i> Vaciar ventas';
+            }
+        });
+    }
+
+    // Pequeño helper de confirmación tipo JSON
+    async function confirmarAccionJSON({ titulo, mensaje, confirmarTexto = 'Confirmar', cancelarTexto = 'Cancelar' }) {
+        return new Promise((resolve) => {
+            // Reutilizamos el modal existente con textos dinámicos
+            const modal = document.getElementById('confirmModal');
+            if (!modal) { resolve(confirm(mensaje)); return; }
+
+            const titleEl = modal.querySelector('h3');
+            const msgEl = modal.querySelector('p');
+            const btnConfirm = document.getElementById('confirmDelete');
+            const btnCancel = document.getElementById('confirmCancel');
+
+            const oldTitle = titleEl.textContent;
+            const oldMsg = msgEl.textContent;
+            const oldConfirmText = btnConfirm.textContent;
+            const oldCancelText = btnCancel.textContent;
+
+            titleEl.textContent = titulo;
+            msgEl.textContent = mensaje;
+            btnConfirm.textContent = confirmarTexto;
+            btnCancel.textContent = cancelarTexto;
+
+            modal.classList.remove('hidden');
+
+            const onConfirm = () => {
+                cleanup();
+                resolve(true);
+            };
+            const onCancel = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            function cleanup() {
+                modal.classList.add('hidden');
+                btnConfirm.removeEventListener('click', onConfirm);
+                btnCancel.removeEventListener('click', onCancel);
+                // Restaurar textos originales
+                titleEl.textContent = oldTitle;
+                msgEl.textContent = oldMsg;
+                btnConfirm.textContent = oldConfirmText;
+                btnCancel.textContent = oldCancelText;
+            }
+
+            btnConfirm.addEventListener('click', onConfirm, { once: true });
+            btnCancel.addEventListener('click', onCancel, { once: true });
         });
     }
 
