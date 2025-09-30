@@ -1048,49 +1048,42 @@ class GoogleSheetsWriter:
             # EXPORTACIÓN RÁPIDA: Intentar escribir todas las filas de una vez
             try:
                 if hoja_protegida:
-                    # Hoja protegida: escribir solo en columnas libres usando batch_update
-                    logger.info("🔄 Usando método rápido para hoja protegida...")
-                    
-                    # Preparar operaciones en lote para columnas libres
-                    batch_operations = []
+                    # Hoja protegida: escribir fila por fila en columnas permitidas
+                    logger.info("🔒 Hoja protegida detectada: escribiendo fila por fila en columnas permitidas...")
+                    ventas_exitosas = 0
+                    errores = []
                     for i, fila_datos in enumerate(filas_datos):
                         fila_actual = proxima_fila + i
-                        
-                        # Solo escribir en columnas que sabemos que están libres
-                        # A, B, C, E, F, H, J, L (basado en el código existente)
-                        columnas_libres = [
-                            ('A', fila_actual, fila_datos[0]),   # Fecha
-                            ('B', fila_actual, fila_datos[1]),   # Notas
-                            ('C', fila_actual, fila_datos[2]),   # ID
-                            ('E', fila_actual, fila_datos[4]),   # Precio
-                            ('F', fila_actual, fila_datos[5]),   # Unidades
-                            ('H', fila_actual, fila_datos[7]),   # Costo U
-                            ('J', fila_actual, fila_datos[9]),   # Forma de pago
-                            ('L', fila_actual, fila_datos[11])   # Margen
-                        ]
-                        
-                        for col, row, value in columnas_libres:
-                            batch_operations.append({
-                                'range': f'{col}{row}',
-                                'values': [[value]]
-                            })
+                        try:
+                            if self.escribir_fila_sin_expandir(fila_datos, fila_actual):
+                                ventas_exitosas += 1
+                            else:
+                                errores.append(f"Fila {fila_actual}: no se pudo escribir")
+                        except Exception as e2:
+                            errores.append(f"Fila {fila_actual}: {str(e2)}")
                     
-                    # Ejecutar todas las operaciones en una sola llamada
-                    if batch_operations:
-                        self.worksheet.batch_update(batch_operations)
-                        logger.info(f"✅ {len(ventas)} ventas exportadas en lote (hoja protegida)")
-                        
-                        # Guardar en CSV local
-                        csv_file = self.data_dir / "ventas_para_sheets.csv"
-                        with open(csv_file, 'a', newline='', encoding='utf-8') as f:
-                            writer = csv.writer(f)
-                            for fila_datos in filas_datos:
-                                writer.writerow(fila_datos)
-                        
+                    # Guardar en CSV local
+                    csv_file = self.data_dir / "ventas_para_sheets.csv"
+                    with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        for fila_datos in filas_datos:
+                            writer.writerow(fila_datos)
+                    
+                    if ventas_exitosas == len(ventas):
+                        logger.info(f"✅ {ventas_exitosas} ventas exportadas (hoja protegida)")
                         return {
                             "success": True,
-                            "ventas_exportadas": len(ventas),
-                            "mensaje": f"✅ {len(ventas)} ventas exportadas exitosamente a Google Sheets (MODO RÁPIDO)"
+                            "ventas_exportadas": ventas_exitosas,
+                            "mensaje": f"✅ {ventas_exitosas} ventas exportadas exitosamente a Google Sheets (hoja protegida)"
+                        }
+                    else:
+                        logger.warning(f"⚠️ Exportación parcial: {ventas_exitosas}/{len(ventas)} ventas (hoja protegida)")
+                        return {
+                            "success": False,
+                            "error": "EXPORT_PARTIAL",
+                            "ventas_exportadas": ventas_exitosas,
+                            "errores": errores,
+                            "mensaje": f"⚠️ {ventas_exitosas}/{len(ventas)} ventas exportadas. Algunas filas no se pudieron escribir por protección."
                         }
                 else:
                     # Hoja NO protegida: usar el método más rápido posible
