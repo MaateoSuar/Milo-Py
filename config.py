@@ -63,6 +63,13 @@ GOOGLE_SHEETS_CONFIG = {
     "CREDENTIALS": get_google_credentials()
 }
 
+# Configuración de Google Apps Script (GAS)
+GOOGLE_APPS_SCRIPT = {
+    "GAS_URL": os.getenv("GAS_URL", ""),
+    "GAS_API_KEY": os.getenv("GAS_API_KEY", ""),
+    "TIMEOUT": int(os.getenv("GAS_TIMEOUT", "15")),
+}
+
 # Configuración de la aplicación
 APP_CONFIG = {
     "DEBUG": True,

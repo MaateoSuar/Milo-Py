@@ -3,9 +3,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from functools import wraps
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas
-from services.export_service import exportar_a_google_sheets
 from services.catalog_service import obtener_catalogo, obtener_rangos
-from config import GOOGLE_SHEETS_CONFIG
+from config import GOOGLE_SHEETS_CONFIG, GOOGLE_APPS_SCRIPT
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key in production
@@ -115,6 +114,29 @@ def api_exportar():
     resultado = exportar_todas_las_ventas_a_sheets()
     return jsonify(resultado), 200
 
+# Diagnóstico: exporta una fila de prueba vía Apps Script / Sheets
+@app.route("/api/exportar_prueba", methods=["POST"])
+def api_exportar_prueba():
+    try:
+        from services.sales_service import _get_sheets_writer
+        writer = _get_sheets_writer()
+        if writer is None:
+            return jsonify({"success": False, "error": "NO_WRITER"}), 500
+        from datetime import datetime
+        venta_demo = {
+            "fecha": datetime.now().strftime("%Y-%m-%d"),
+            "id": "TEST001",
+            "nombre": "Prueba Exportación",
+            "precio": 1234.56,
+            "unidades": 2,
+            "pago": "Efectivo",
+            "notas": "Fila de prueba"
+        }
+        res = writer.agregar_multiples_ventas_a_sheets([venta_demo])
+        return jsonify({"success": True, "resultado": res}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Redirigir a Google Sheets
 @app.route("/download/sheets", methods=["GET"])
 def download_sheets():
@@ -151,8 +173,25 @@ def test_sheets():
         if writer is None:
             return jsonify({"status": "error", "error": "No hay cliente de Google Sheets"}), 500
         # Listar títulos de hojas disponibles
-        sheets = [ws.title for ws in writer.spreadsheet.worksheets()]
-        return jsonify({"status": "ok", "sheets": sheets})
+        if hasattr(writer, 'spreadsheet'):
+            sheets = [ws.title for ws in writer.spreadsheet.worksheets()]
+            return jsonify({"status": "ok", "mode": "sheets_api", "sheets": sheets})
+        else:
+            return jsonify({"status": "ok", "mode": "apps_script"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+# Endpoint de verificación de Apps Script
+@app.route("/test_gas", methods=["GET"])
+def test_gas():
+    try:
+        from services.apps_script_writer import AppsScriptWriter
+        gas_url = (GOOGLE_APPS_SCRIPT.get("GAS_URL") or "").strip()
+        if not gas_url:
+            return jsonify({"status": "error", "error": "GAS_URL no configurado"}), 400
+        writer = AppsScriptWriter()
+        estado = writer.obtener_estado_gas()
+        return jsonify(estado), 200
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 

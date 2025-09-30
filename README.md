@@ -26,10 +26,16 @@ cd milo-store-erp
 pip install -r requirements.txt
 ```
 
-### 3. Configurar Google Sheets
-- Asegúrate de que tu Google Sheet esté configurado correctamente
-- El archivo debe tener columnas: `ID` y `Nombre del Elemento`
-- Verifica que el `SHEET_ID` y `GID` en `config.py` sean correctos
+### 3. Configurar Google Sheets / Apps Script
+- Opción A (API de Sheets via gspread):
+  - Configura `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_SHEETS_SHEET_ID`, `GOOGLE_SHEETS_SHEET_NAME`
+  - Comparte la hoja con la cuenta de servicio.
+- Opción B (Apps Script Web App - recomendado si ves errores 409/429):
+  - Crea un proyecto GAS y copia `apps_script/Code.gs` y `apps_script/appsscript.json`.
+  - En Propiedades del Script define `SHEET_ID`, `SHEET_NAME` y opcional `API_KEY`.
+  - Publica como Aplicación web (Ejecutar como tú; Acceso: cualquiera con el enlace).
+  - En la app define `GAS_URL` (URL del Web App) y opcional `GAS_API_KEY`.
+  - La app usará AppsScript automáticamente si `GAS_URL` está presente.
 
 ### 4. Ejecutar la aplicación
 ```bash
@@ -37,6 +43,8 @@ python app.py
 ```
 
 La aplicación estará disponible en: `http://localhost:5000`
+
+Para verificar Apps Script: `GET /test_gas`. Para Sheets API: `GET /test_sheets`.
 
 ## 📁 Estructura del Proyecto
 

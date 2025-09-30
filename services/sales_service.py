@@ -1,5 +1,7 @@
 from datetime import datetime
 from .google_sheets_writer import GoogleSheetsWriter
+from .apps_script_writer import AppsScriptWriter
+from config import GOOGLE_APPS_SCRIPT
 
 # Estructura en memoria
 _ventas = []  # lista de dicts: {fecha,id,nombre,precio,unidades,total,pago,notas}
@@ -11,7 +13,12 @@ def _get_sheets_writer():
     global _sheets_writer
     if _sheets_writer is None:
         try:
-            _sheets_writer = GoogleSheetsWriter()
+            # Si hay GAS_URL configurado, usar Apps Script; si no, usar API de Sheets
+            gas_url = (GOOGLE_APPS_SCRIPT.get("GAS_URL") or "").strip()
+            if gas_url:
+                _sheets_writer = AppsScriptWriter()
+            else:
+                _sheets_writer = GoogleSheetsWriter()
         except Exception as e:
             print(f"⚠️ No se pudo inicializar GoogleSheetsWriter: {e}")
             _sheets_writer = None
@@ -106,50 +113,21 @@ def obtener_estado_sheets():
     return writer.obtener_estado_sheets()
 
 def exportar_todas_las_ventas_a_sheets():
-    """Exporta TODAS las ventas acumuladas en memoria a Google Sheets de forma RÁPIDA"""
+    """Exporta TODAS las ventas acumuladas en memoria a Google Sheets en UNA sola actualización."""
     if not _ventas:
         return {
             "success": False,
             "error": "NO_HAY_VENTAS",
             "mensaje": "No hay ventas para exportar. Agrega algunas ventas primero."
         }
-    
-    try:
-        print(f"🚀 Exportando {len(_ventas)} ventas a Google Sheets (MODO RÁPIDO)...")
-        
-        writer = _get_sheets_writer()
-        if writer is None:
-            return {
-                "success": False,
-                "error": "GOOGLE_SHEETS_NOT_AVAILABLE",
-                "mensaje": "Credenciales de Google Sheets no disponibles"
-            }
 
-        # Usar el método de escritura en lote para máxima velocidad
-        resultado = writer.agregar_multiples_ventas_a_sheets(_ventas)
-        
-        if resultado["success"]:
-            print(f"✅ {len(_ventas)} ventas exportadas exitosamente a Google Sheets")
-            
-            # OPCIONAL: Limpiar ventas después de exportar exitosamente
-            # ventas_exportadas = _ventas.copy()
-            # _ventas.clear()
-            # print(f"🧹 Ventas limpiadas de la memoria local después de exportar")
-            
-            return {
-                "success": True,
-                "ventas_exportadas": len(_ventas),
-                "mensaje": f"Exportado con éxito"
-            }
-        else:
-            print(f"❌ Error exportando ventas: {resultado.get('error', 'Error desconocido')}")
-            return resultado
-            
+    try:
+        writer = _get_sheets_writer()
+        print(f"🚀 Exportando {len(_ventas)} ventas...")
+        return writer.agregar_multiples_ventas_a_sheets(_ventas)
     except Exception as e:
-        error_msg = f"Error exportando ventas: {str(e)}"
-        print(f"❌ {error_msg}")
         return {
             "success": False,
             "error": "EXPORT_ERROR",
-            "mensaje": error_msg
+            "mensaje": f"Error exportando ventas: {str(e)}"
         }
