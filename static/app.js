@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalVentas = document.getElementById('totalVentas');
     const inputDescuento = document.getElementById('descuento');
     const descuentoGroup = document.getElementById('descuentoGroup');
+    const precioGroup = document.getElementById('precioGroup');
+    const unidadesGroup = document.getElementById('unidadesGroup');
     // Tabs y tarjeta
     const tabVenta = document.getElementById('tabVenta');
     const tabCambio = document.getElementById('tabCambio');
@@ -58,6 +60,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Ocultar descuento en Cambios y limpiar su valor
             if (descuentoGroup) descuentoGroup.classList.add('hidden');
             if (inputDescuento) inputDescuento.value = '';
+            // Layout: precio más grande y unidades a la derecha
+            if (precioGroup) {
+                precioGroup.classList.remove('md:col-span-2');
+                precioGroup.classList.add('md:col-span-3');
+            }
+            if (unidadesGroup) {
+                unidadesGroup.classList.add('md:justify-self-end');
+            }
             // Título del formulario
             if (formTitle) formTitle.textContent = 'Cambio de Venta';
         } else {
@@ -74,6 +84,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // Mostrar descuento en Ventas
             if (descuentoGroup) descuentoGroup.classList.remove('hidden');
+            // Layout: precio normal y unidades sin alineación forzada
+            if (precioGroup) {
+                precioGroup.classList.remove('md:col-span-3');
+                precioGroup.classList.add('md:col-span-2');
+            }
+            if (unidadesGroup) {
+                unidadesGroup.classList.remove('md:justify-self-end');
+            }
             // Título del formulario
             if (formTitle) formTitle.textContent = 'Registro de Venta';
         }
