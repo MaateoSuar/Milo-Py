@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import csv
 from config import GOOGLE_SHEETS_CONFIG
+from services.tipo_service import TipoService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ class GoogleSheetsWriter:
             "Unidades", "Precio Unitario", "Costo U", "Tipo", 
             "Forma de Pago", "Costo Total", "Margen"
         ]
+        # Servicio para obtener 'Tipo' por ID
+        self.tipo_service = None
         
         try:
             print("\n=== Inicializando GoogleSheetsWriter ===")
@@ -97,6 +100,10 @@ class GoogleSheetsWriter:
             
             # 5. Inicializar cliente y conectar con Google Sheets
             self._initialize_client()
+            try:
+                self.tipo_service = TipoService()
+            except Exception as e:
+                logger.warning(f"No se pudo inicializar TipoService: {e}")
             
         except Exception as e:
             error_msg = f"❌ Error al inicializar GoogleSheetsWriter: {str(e)}"
@@ -219,6 +226,44 @@ class GoogleSheetsWriter:
                 return len(columna_a) + 1 if columna_a else 1
             except:
                 return 1
+
+    def obtener_primer_fila_vacia_util(self):
+        """Encuentra la primera fila vacía 'útil' desde arriba.
+        Considera vacía si A:C y E:L están vacías (D se ignora para no interferir con fórmulas).
+        Devuelve número de fila (1-based). Si no hay huecos, retorna la siguiente al final confiable."""
+        try:
+            all_values = self.worksheet.get_all_values()
+            if not all_values:
+                return 2  # dejar fila 1 para headers
+            # Recorrer desde fila 2 (índice 1 en lista)
+            for i, row in enumerate(all_values, start=1):
+                if i == 1:
+                    continue  # headers
+                # A:C = indices 0..2, E:L = 4..11
+                def is_empty(cell):
+                    if cell is None:
+                        return True
+                    s = str(cell).strip()
+                    return s == ""
+                # A:C
+                ac_vacias = True
+                for c in range(0, min(3, len(row))):
+                    if not is_empty(row[c]):
+                        ac_vacias = False
+                        break
+                # E:L
+                el_vacias = True
+                for c in range(4, 12):
+                    if c < len(row) and not is_empty(row[c]):
+                        el_vacias = False
+                        break
+                if ac_vacias and el_vacias:
+                    return i
+            # Si no hay huecos, usar la siguiente al final confiable
+            return self.obtener_ultima_fila_confiable()
+        except Exception as e:
+            logger.warning(f"Fallo en obtener_primer_fila_vacia_util: {e}")
+            return self.obtener_ultima_fila_confiable()
     
     def asegurar_capacidad_hoja(self, filas_necesarias=1, columnas_necesarias=None):
         """
@@ -301,6 +346,18 @@ class GoogleSheetsWriter:
             fecha_obj = datetime.fromisoformat(venta["fecha"])
             fecha_formateada = fecha_obj.strftime("%d/%m")
             
+            # Resolver 'Tipo' desde hoja externa según ID
+            tipo_val = ""
+            try:
+                if self.tipo_service:
+                    tipo_val = self.tipo_service.obtener_tipo_por_id(venta["id"]) or ""
+            except Exception as e:
+                logger.warning(f"No se pudo obtener 'Tipo' para ID {venta.get('id')}: {e}")
+            try:
+                logger.info(f"Tipo resuelto para ID {venta.get('id')}: '{tipo_val}'")
+            except Exception:
+                pass
+
             # Preparar fila según el formato esperado
             fila = [
                 fecha_obj.strftime("%d/%m"),                   # A: Fecha (DD/MM)
@@ -311,7 +368,7 @@ class GoogleSheetsWriter:
                 int(venta["unidades"]),                     # F: Unidades (entero)
                 float(precio_unitario),                      # G: Precio Unitario (precio por unidad)
                 "Sin stock",                                # H: Costo U (por defecto)
-                "",                                         # I: Tipo (vacío por ahora)
+                tipo_val,                                    # I: Tipo (derivado por ID)
                 venta["pago"],                              # J: Forma de pago
                 float(precio_total),                         # K: Costo Total (mismo que precio total)
                 float(margen)                                # L: Margen (formato numérico)
@@ -461,8 +518,8 @@ class GoogleSheetsWriter:
             # Preparar los datos de la venta
             fila_datos = self.preparar_fila_venta(venta)
             
-            # Obtener la próxima fila vacía de forma confiable
-            proxima_fila = self.obtener_ultima_fila_confiable()
+            # Buscar 'huecos': primera fila vacía útil (A:C y E:L vacías). Si no, siguiente al final
+            proxima_fila = self.obtener_primer_fila_vacia_util()
             
             # Asegurar que la hoja tenga capacidad suficiente
             if not self.asegurar_capacidad_hoja(proxima_fila + 5):
@@ -550,6 +607,7 @@ class GoogleSheetsWriter:
                 "error": "UNKNOWN_ERROR",
                 "mensaje": f"Error inesperado: {str(e)}"
             }
+
     
     def limpiar_filas_vacias(self):
         """
