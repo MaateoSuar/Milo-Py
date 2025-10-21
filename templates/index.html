@@ -117,7 +117,7 @@
                         <p id="idHelper" class="mt-1 text-xs text-gray-500">Escribí un ID válido para completar el nombre automáticamente.</p>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Precio -->
                         <div>
                             <label for="precio" class="block text-sm font-medium primary-text mb-1">Precio ($)</label>
@@ -126,6 +126,17 @@
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none"
                                     placeholder="0.00" required>
                                 <span class="absolute right-3 top-3 text-gray-500">$</span>
+                            </div>
+                        </div>
+
+                        <!-- Descuento (%) -->
+                        <div id="descuentoGroup">
+                            <label for="descuento" class="block text-sm font-medium primary-text mb-1">Descuento (%)</label>
+                            <div class="relative">
+                                <input type="number" id="descuento" name="descuento" min="0" max="100" step="1"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none"
+                                    placeholder="Opcional, ej: 10">
+                                <span class="absolute right-3 top-3 text-gray-500">%</span>
                             </div>
                         </div>
 

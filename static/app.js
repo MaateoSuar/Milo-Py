@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const ventasTable = document.getElementById('ventasTable');
     const ventasBody = document.getElementById('ventasBody');
     const totalVentas = document.getElementById('totalVentas');
+    const inputDescuento = document.getElementById('descuento');
+    const descuentoGroup = document.getElementById('descuentoGroup');
     // Tabs y tarjeta
     const tabVenta = document.getElementById('tabVenta');
     const tabCambio = document.getElementById('tabCambio');
@@ -53,6 +55,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inputNotas && (!inputNotas.value || !inputNotas.value.startsWith(NOTAS_PLACEHOLDER_CAMBIO))) {
                 inputNotas.value = NOTAS_PLACEHOLDER_CAMBIO;
             }
+            // Ocultar descuento en Cambios y limpiar su valor
+            if (descuentoGroup) descuentoGroup.classList.add('hidden');
+            if (inputDescuento) inputDescuento.value = '';
             // Título del formulario
             if (formTitle) formTitle.textContent = 'Cambio de Venta';
         } else {
@@ -67,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inputNotas && inputNotas.value === NOTAS_PLACEHOLDER_CAMBIO) {
                 inputNotas.value = '';
             }
+            // Mostrar descuento en Ventas
+            if (descuentoGroup) descuentoGroup.classList.remove('hidden');
             // Título del formulario
             if (formTitle) formTitle.textContent = 'Registro de Venta';
         }
@@ -319,6 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fechaField.value = today;
         }
         inputNombre.value = '';
+        if (inputDescuento) inputDescuento.value = '';
         editIndex = null;
         setHelper('Formulario limpiado. Selecciona un ID del catálogo.', true);
         inputID.focus();
@@ -420,6 +428,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let precio = parseFloat(precioValue);
         let unidades = parseInt(unidadesValue);
+        // Aplicar descuento (%) SOLO en Ventas
+        if (!isCambio) {
+            let descuentoPct = 0;
+            if (inputDescuento && inputDescuento.value !== '') {
+                const d = parseFloat(inputDescuento.value);
+                if (!isNaN(d) && isFinite(d)) {
+                    descuentoPct = Math.min(100, Math.max(0, d));
+                }
+            }
+            if (!isNaN(precio) && isFinite(precio) && descuentoPct > 0) {
+                precio = +(precio * (1 - (descuentoPct / 100))).toFixed(2);
+            }
+        }
         if (isCambio) {
             unidades = -Math.abs(unidades);
         }
