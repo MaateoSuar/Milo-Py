@@ -82,6 +82,13 @@ class CatalogService:
             logger.error(error_msg)
             raise
 
+    def _get_sheet_copia_codigos(self):
+        """
+        Devuelve la worksheet titulada "Copia de Códigos Stock" si existe (título exacto o ignorando acentos/mayúsculas).
+        """
+        ws = self._get_worksheet_by_title("Copia de Códigos Stock")
+        return ws
+
     def _normalize_title(self, s: str) -> str:
         try:
             import unicodedata
@@ -136,6 +143,38 @@ class CatalogService:
         """
         try:
             logger.info("Descargando catálogo desde Google Sheets...")
+
+            # 1) Modo especial: hoja "Copia de Códigos Stock" usando columnas I (ID) y J (Nombre) desde fila 4
+            try:
+                ws_copia = self._get_sheet_copia_codigos()
+            except Exception:
+                ws_copia = None
+            if ws_copia is not None:
+                try:
+                    values = ws_copia.get_all_values()
+                    catalogo_especial = {}
+                    # Columnas I y J son índices 8 y 9 (0-based)
+                    col_i, col_j = 8, 9
+                    for row_idx, row in enumerate(values, start=1):
+                        if row_idx < 4:
+                            continue  # empezar desde fila 4
+                        # Asegurar longitud
+                        if len(row) <= col_j:
+                            continue
+                        codigo_i = (row[col_i] or "").strip().upper()
+                        nombre_j = (row[col_j] or "").strip()
+                        if not codigo_i:
+                            continue
+                        # Normalizar espacios en el nombre (columna J). Si falta, usar el código como nombre.
+                        nombre_clean = " ".join(nombre_j.split()) if nombre_j else codigo_i
+                        catalogo_especial[codigo_i] = {"nombre": nombre_clean, "precio": 0.0}
+                    if catalogo_especial:
+                        logger.info(f"Catálogo (Copia de Códigos Stock): {len(catalogo_especial)} códigos desde I (ID) y J (Nombre)")
+                        return catalogo_especial
+                    else:
+                        logger.warning("Hoja 'Copia de Códigos Stock' no produjo filas válidas (I+J)")
+                except Exception as e:
+                    logger.warning(f"Fallo leyendo 'Copia de Códigos Stock': {e}. Se usará modo estándar.")
             
             def parse_price_chilean(value_str: str) -> float:
                 try:
@@ -180,7 +219,7 @@ class CatalogService:
                 else:
                     raise RuntimeError(f"Error del API de Google Sheets: {e}")
             
-            # Obtener todos los valores de la hoja
+            # 2) Modo estándar (fallback)
             all_values = self.worksheet.get_all_values()
             
             if not all_values:

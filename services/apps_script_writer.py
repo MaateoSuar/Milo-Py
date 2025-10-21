@@ -88,6 +88,27 @@ class AppsScriptWriter:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def obtener_estado_sheets(self):
+        """
+        Método de compatibilidad para el endpoint /api/sheets/status cuando se usa Apps Script.
+        Devuelve el estado reportado por el Web App (GAS) si está disponible.
+        """
+        try:
+            estado = self.obtener_estado_gas()
+            if estado.get("success"):
+                return {
+                    "success": True,
+                    "mode": "apps_script",
+                    "gas": estado.get("gas", {})
+                }
+            return {
+                "success": False,
+                "mode": "apps_script",
+                "error": estado.get("error", "UNKNOWN_ERROR")
+            }
+        except Exception as e:
+            return {"success": False, "mode": "apps_script", "error": str(e)}
+
     def agregar_multiples_ventas_a_sheets(self, ventas: list):
         if not ventas:
             return {"success": False, "error": "NO_HAY_VENTAS", "mensaje": "No hay ventas para exportar"}

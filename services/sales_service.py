@@ -13,12 +13,16 @@ def _get_sheets_writer():
     global _sheets_writer
     if _sheets_writer is None:
         try:
-            # Si hay GAS_URL configurado, usar Apps Script; si no, usar API de Sheets
-            gas_url = (GOOGLE_APPS_SCRIPT.get("GAS_URL") or "").strip()
-            if gas_url:
-                _sheets_writer = AppsScriptWriter()
-            else:
-                _sheets_writer = GoogleSheetsWriter()
+            # Forzar uso de API directa de Google Sheets para mayor confiabilidad ahora
+            # Si deseas volver a Apps Script, comenta la línea siguiente y descomenta la lógica por GAS_URL.
+            print("[INFO] Usando GoogleSheetsWriter (API directa), ignorando GAS_URL temporalmente")
+            _sheets_writer = GoogleSheetsWriter()
+            # -- Modo anterior por GAS_URL --
+            # gas_url = (GOOGLE_APPS_SCRIPT.get("GAS_URL") or "").strip()
+            # if gas_url:
+            #     _sheets_writer = AppsScriptWriter()
+            # else:
+            #     _sheets_writer = GoogleSheetsWriter()
         except Exception as e:
             print(f"⚠️ No se pudo inicializar GoogleSheetsWriter: {e}")
             _sheets_writer = None
@@ -54,11 +58,7 @@ def _normalizar_venta(data: dict) -> dict:
         unidades = int(data["unidades"])
     except Exception:
         raise ValueError("Unidades inválidas")
-
-    if unidades < 1:
-        raise ValueError("Unidades debe ser >= 1")
-    if precio < 0:
-        raise ValueError("Precio no puede ser negativo")
+    # Permitir unidades negativas (devoluciones) y precios negativos si se desea registrar ajustes
 
     pago = str(data["pago"]).strip() or "Otro"
     notas = str(data.get("notas", "") or "").strip()
