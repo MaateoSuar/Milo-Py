@@ -94,7 +94,7 @@ def exportar_ventas_seguro_google_sheets(
 
         if limpiar_antes:
             try:
-                worksheet.batch_clear(["A2:I"])
+                worksheet.batch_clear(["A2:C", "E2:I"])
             except Exception:
                 pass
 
@@ -104,12 +104,16 @@ def exportar_ventas_seguro_google_sheets(
         while written < len(batch_data):
             chunk = batch_data[written: written + chunk_size]
             end_row = start_row + len(chunk) - 1
-            rng = f"A{start_row}:I{end_row}"
+            rng_left = f"A{start_row}:C{end_row}"
+            rng_right = f"E{start_row}:I{end_row}"
             max_attempts = 5
             base_sleep = 0.5
             for attempt in range(max_attempts):
                 try:
-                    worksheet.update(rng, chunk, value_input_option='USER_ENTERED')
+                    left = [row[0:3] for row in chunk]
+                    right = [row[4:9] for row in chunk]
+                    worksheet.update(rng_left, left, value_input_option='USER_ENTERED')
+                    worksheet.update(rng_right, right, value_input_option='USER_ENTERED')
                     break
                 except gspread.exceptions.APIError as e:
                     msg = str(e).lower()

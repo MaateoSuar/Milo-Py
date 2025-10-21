@@ -333,6 +333,8 @@ class GoogleSheetsWriter:
                 # Escribir cada columna individualmente usando update_cell
                 for i, valor in enumerate(fila_datos):
                     columna = i + 1  # gspread usa números: 1=A, 2=B, 3=C, etc.
+                    if columna == 4:
+                        continue
                     self.worksheet.update_cell(fila_destino, columna, valor)
                 
                 logger.info(f"✅ Fila {fila_destino} escrita exitosamente columna por columna")
@@ -378,13 +380,11 @@ class GoogleSheetsWriter:
         """
         for intento in range(max_reintentos):
             try:
-                # Intentar escribir en TODAS las columnas (A hasta L)
-                # La protección parece ser parcial, así que probamos todas
+                # Intentar escribir en TODAS las columnas permitidas (A:C y E:L), evitando D
                 columnas_todas = [
                     f"A{fila_destino}",  # Fecha
                     f"B{fila_destino}",  # Notas
                     f"C{fila_destino}",  # ID
-                    f"D{fila_destino}",  # Nombre
                     f"E{fila_destino}",  # Precio
                     f"F{fila_destino}",  # Unidades
                     f"G{fila_destino}",  # Precio Unitario
@@ -400,7 +400,6 @@ class GoogleSheetsWriter:
                     fila_datos[0],   # Fecha
                     fila_datos[1],   # Notas
                     fila_datos[2],   # ID
-                    fila_datos[3],   # Nombre
                     fila_datos[4],   # Precio
                     fila_datos[5],   # Unidades
                     fila_datos[6],   # Precio Unitario
@@ -599,8 +598,8 @@ class GoogleSheetsWriter:
                     filas_limpiadas_exitosamente = 0
                     for i in range(ultima_fila_con_datos + 1, len(all_values) + 1):
                         try:
-                            # Limpiar toda la fila (A hasta L)
-                            self.worksheet.batch_clear([f'A{i}:L{i}'])
+                            # Limpiar la fila sin afectar la columna D: A:C y E:L
+                            self.worksheet.batch_clear([f'A{i}:C{i}', f'E{i}:L{i}'])
                             filas_limpiadas_exitosamente += 1
                             logger.debug(f"Fila {i} limpiada exitosamente")
                         except Exception as e:
@@ -739,8 +738,8 @@ class GoogleSheetsWriter:
                 filas_limpiadas_exitosamente = 0
                 for fila_num in filas_a_limpiar:
                     try:
-                        # Limpiar toda la fila (A hasta L)
-                        self.worksheet.batch_clear([f'A{fila_num}:L{fila_num}'])
+                        # Limpiar la fila sin afectar la columna D: A:C y E:L
+                        self.worksheet.batch_clear([f'A{fila_num}:C{fila_num}', f'E{fila_num}:L{fila_num}'])
                         filas_limpiadas_exitosamente += 1
                         logger.debug(f"Fila fantasma {fila_num} limpiada")
                     except Exception as e:
@@ -816,8 +815,8 @@ class GoogleSheetsWriter:
                 filas_limpiadas_exitosamente = 0
                 for fila_num in filas_a_limpiar:
                     try:
-                        # Limpiar toda la fila (A hasta L)
-                        self.worksheet.batch_clear([f'A{fila_num}:L{fila_num}'])
+                        # Limpiar la fila sin afectar la columna D: A:C y E:L
+                        self.worksheet.batch_clear([f'A{fila_num}:C{fila_num}', f'E{fila_num}:L{fila_num}'])
                         filas_limpiadas_exitosamente += 1
                         logger.info(f"Fila basura {fila_num} limpiada")
                     except Exception as e:
@@ -1089,9 +1088,15 @@ class GoogleSheetsWriter:
                     # Hoja NO protegida: usar el método más rápido posible
                     logger.info("🔄 Usando método ultra rápido para hoja sin protección...")
                     
-                    # Escribir todas las filas de una vez usando range
-                    range_name = f"A{proxima_fila}:L{proxima_fila + len(ventas) - 1}"
-                    self.worksheet.update(range_name, filas_datos, value_input_option='USER_ENTERED')
+                    # Escribir todas las filas de una vez usando dos rangos (A:C y E:L), evitando D
+                    start = proxima_fila
+                    end = proxima_fila + len(ventas) - 1
+                    range_name_1 = f"A{start}:C{end}"
+                    data_1 = [row[0:3] for row in filas_datos]
+                    range_name_2 = f"E{start}:L{end}"
+                    data_2 = [row[4:12] for row in filas_datos]
+                    self.worksheet.update(range_name_1, data_1, value_input_option='USER_ENTERED')
+                    self.worksheet.update(range_name_2, data_2, value_input_option='USER_ENTERED')
                     
                     logger.info(f"✅ {len(ventas)} ventas exportadas en lote (hoja sin protección)")
                     
