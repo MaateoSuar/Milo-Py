@@ -421,7 +421,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let precio = parseFloat(precioValue);
         let unidades = parseInt(unidadesValue);
         if (isCambio) {
-            precio = -Math.abs(precio);
             unidades = -Math.abs(unidades);
         }
         const pago = pagoElement.value;
