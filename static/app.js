@@ -25,12 +25,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const ventasTable = document.getElementById('ventasTable');
     const ventasBody = document.getElementById('ventasBody');
     const totalVentas = document.getElementById('totalVentas');
+    // Tabs y tarjeta
+    const tabVenta = document.getElementById('tabVenta');
+    const tabCambio = document.getElementById('tabCambio');
+    const ventaFormCard = document.getElementById('ventaFormCard');
+    const formTitle = document.getElementById('formTitle');
+
+    // Estado de pestaña actual
+    let isCambio = false;
+
+    const NOTAS_PLACEHOLDER_VENTA = 'Detalles adicionales sobre la venta...';
+    const NOTAS_PLACEHOLDER_CAMBIO = 'CAMBIO - ';
+
+    function aplicarModo() {
+        if (!ventaFormCard) return;
+        // Estilos de pestañas
+        if (isCambio) {
+            tabVenta?.classList.remove('bg-gray-100');
+            tabCambio?.classList.add('bg-red-100');
+            tabCambio?.classList.add('text-red-700');
+            tabCambio?.classList.remove('hover:bg-red-50');
+            // Marco rojo/bordo
+            ventaFormCard.classList.add('border-2', 'border-red-700', 'ring-2', 'ring-red-100');
+            // Placeholder de notas
+            if (inputNotas) inputNotas.placeholder = NOTAS_PLACEHOLDER_CAMBIO;
+            // Escribir valor por defecto en notas si no existe o no empieza con el prefijo
+            if (inputNotas && (!inputNotas.value || !inputNotas.value.startsWith(NOTAS_PLACEHOLDER_CAMBIO))) {
+                inputNotas.value = NOTAS_PLACEHOLDER_CAMBIO;
+            }
+            // Título del formulario
+            if (formTitle) formTitle.textContent = 'Cambio de Venta';
+        } else {
+            tabCambio?.classList.remove('bg-red-100');
+            tabCambio?.classList.add('hover:bg-red-50');
+            tabVenta?.classList.add('bg-gray-100');
+            // Quitar marco rojo/bordo
+            ventaFormCard.classList.remove('border-2', 'border-red-700', 'ring-2', 'ring-red-100');
+            // Placeholder de notas
+            if (inputNotas) inputNotas.placeholder = NOTAS_PLACEHOLDER_VENTA;
+            // Si el valor era exactamente el prefijo automático, limpiar al volver a Venta
+            if (inputNotas && inputNotas.value === NOTAS_PLACEHOLDER_CAMBIO) {
+                inputNotas.value = '';
+            }
+            // Título del formulario
+            if (formTitle) formTitle.textContent = 'Registro de Venta';
+        }
+    }
+
+    // Eventos de pestañas
+    tabVenta?.addEventListener('click', () => { isCambio = false; aplicarModo(); });
+    tabCambio?.addEventListener('click', () => { isCambio = true; aplicarModo(); });
     
     // Configurar fecha inicial
     if (fechaField) {
         fechaField.value = today;
         console.log('Date field set to:', fechaField.value);
     }
+    // Aplicar estado inicial de pestañas/placeholder/borde
+    aplicarModo();
 
     // ======== EVENTOS =========
     form.addEventListener('submit', handleSubmit);
@@ -270,6 +322,16 @@ document.addEventListener('DOMContentLoaded', () => {
         editIndex = null;
         setHelper('Formulario limpiado. Selecciona un ID del catálogo.', true);
         inputID.focus();
+        // Ajustar notas según modo actual
+        if (inputNotas) {
+            if (isCambio) {
+                inputNotas.value = NOTAS_PLACEHOLDER_CAMBIO;
+                inputNotas.placeholder = NOTAS_PLACEHOLDER_CAMBIO;
+            } else {
+                inputNotas.value = '';
+                inputNotas.placeholder = NOTAS_PLACEHOLDER_VENTA;
+            }
+        }
     }
 
     async function exportarExcel() {
@@ -356,8 +418,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const precio = parseFloat(precioValue);
-        const unidades = parseInt(unidadesValue);
+        let precio = parseFloat(precioValue);
+        let unidades = parseInt(unidadesValue);
+        if (isCambio) {
+            precio = -Math.abs(precio);
+            unidades = -Math.abs(unidades);
+        }
         const pago = pagoElement.value;
 
         const venta = { fecha, id, nombre, precio, unidades, pago, notas };

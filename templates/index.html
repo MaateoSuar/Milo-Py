@@ -68,9 +68,15 @@
 
     <div class="flex-1 container mx-auto px-4 py-8 max-w-4xl">
         <!-- Formulario -->
-        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div id="ventaFormCard" class="bg-white rounded-xl shadow-lg overflow-hidden">
             <div class="p-6">
-                <h2 class="text-2xl font-semibold primary-text mb-6">Registro de Venta</h2>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 id="formTitle" class="text-2xl font-semibold primary-text">Registro de Venta</h2>
+                    <div class="inline-flex rounded-lg overflow-hidden border border-gray-200">
+                        <button id="tabVenta" type="button" class="px-4 py-2 text-sm font-medium primary-text bg-gray-100">Ventas</button>
+                        <button id="tabCambio" type="button" class="px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Cambios</button>
+                    </div>
+                </div>
 
                 <form id="ventaForm" class="space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -127,7 +133,7 @@
                         <div>
                             <label for="unidades" class="block text-sm font-medium primary-text mb-1">Unidades</label>
                             <div class="relative">
-                                <input type="number" id="unidades" name="unidades" step="1" min="-1000000"
+                                <input type="number" id="unidades" name="unidades" step="1" min="0"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none"
                                     placeholder="0" required>
                                 <i class="fas fa-cubes absolute right-3 top-3 text-gray-400"></i>
