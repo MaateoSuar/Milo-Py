@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputNombre = document.getElementById('nombre');
     const inputPrecio = document.getElementById('precio');
     const inputUnidades = document.getElementById('unidades');
+    const inputPrecioFinal = document.getElementById('precioFinal');
     const inputPago = document.querySelector('input[name="pago"]:checked');
     const inputNotas = document.getElementById('notas');
     const fechaField = document.getElementById('fecha');
@@ -29,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const descuentoGroup = document.getElementById('descuentoGroup');
     const precioGroup = document.getElementById('precioGroup');
     const unidadesGroup = document.getElementById('unidadesGroup');
+    const precioFinalGroup = document.getElementById('precioFinalGroup');
     // Tabs y tarjeta
     const tabVenta = document.getElementById('tabVenta');
     const tabCambio = document.getElementById('tabCambio');
@@ -37,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Estado de pestaña actual
     let isCambio = false;
+    let precioFinalTouched = false; // si el usuario editó manualmente precioFinal
 
     const NOTAS_PLACEHOLDER_VENTA = 'Detalles adicionales sobre la venta...';
     const NOTAS_PLACEHOLDER_CAMBIO = 'CAMBIO - ';
@@ -57,9 +60,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inputNotas && (!inputNotas.value || !inputNotas.value.startsWith(NOTAS_PLACEHOLDER_CAMBIO))) {
                 inputNotas.value = NOTAS_PLACEHOLDER_CAMBIO;
             }
-            // Ocultar descuento en Cambios y limpiar su valor
+            // Ocultar descuento y precio final en Cambios y limpiar su valor
             if (descuentoGroup) descuentoGroup.classList.add('hidden');
             if (inputDescuento) inputDescuento.value = '';
+            if (precioFinalGroup) precioFinalGroup.classList.add('hidden');
+            // En Cambios: precioFinal = precio (si no fue tocado manualmente)
+            if (!precioFinalTouched) {
+                if (inputPrecio && inputPrecio.value !== '') {
+                    inputPrecioFinal.value = inputPrecio.value;
+                } else {
+                    inputPrecioFinal.value = '';
+                }
+            }
             // Layout: precio más grande y unidades a la derecha
             if (precioGroup) {
                 precioGroup.classList.remove('md:col-span-2');
@@ -82,8 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inputNotas && inputNotas.value === NOTAS_PLACEHOLDER_CAMBIO) {
                 inputNotas.value = '';
             }
-            // Mostrar descuento en Ventas
+            // Mostrar descuento y precio final en Ventas
             if (descuentoGroup) descuentoGroup.classList.remove('hidden');
+            if (precioFinalGroup) precioFinalGroup.classList.remove('hidden');
+            // Recalcular precio final a partir de descuento si no fue tocado manual
+            recalcularPrecioFinalSiAuto();
             // Layout: precio normal y unidades sin alineación forzada
             if (precioGroup) {
                 precioGroup.classList.remove('md:col-span-3');
@@ -114,6 +129,11 @@ document.addEventListener('DOMContentLoaded', () => {
     addBtn.addEventListener('click', handleSubmit);
     resetBtn.addEventListener('click', resetForm);
     exportBtn.addEventListener('click', exportarExcel);
+
+    // Recalcular Precio Final en tiempo real si no fue editado manualmente
+    if (inputPrecio) inputPrecio.addEventListener('input', () => { precioFinalTouched = false; recalcularPrecioFinalSiAuto(); });
+    if (inputDescuento) inputDescuento.addEventListener('input', () => { if (!isCambio) { precioFinalTouched = false; recalcularPrecioFinalSiAuto(); } });
+    if (inputPrecioFinal) inputPrecioFinal.addEventListener('input', () => { precioFinalTouched = true; });
 
     // Evento para el dropdown de IDs
     inputID.addEventListener('change', function() {
@@ -345,6 +365,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         inputNombre.value = '';
         if (inputDescuento) inputDescuento.value = '';
+        if (inputPrecioFinal) inputPrecioFinal.value = '';
+        precioFinalTouched = false;
         editIndex = null;
         setHelper('Formulario limpiado. Selecciona un ID del catálogo.', true);
         inputID.focus();
@@ -446,19 +468,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let precio = parseFloat(precioValue);
         let unidades = parseInt(unidadesValue);
-        // Aplicar descuento (%) SOLO en Ventas
-        if (!isCambio) {
-            let descuentoPct = 0;
+        // Determinar precio unitario final a enviar: usar Precio Final si está, si no calcular a partir de descuento
+        let precioFinalUnit = null;
+        const descuentoPct = (() => {
+            if (isCambio) return 0;
             if (inputDescuento && inputDescuento.value !== '') {
                 const d = parseFloat(inputDescuento.value);
-                if (!isNaN(d) && isFinite(d)) {
-                    descuentoPct = Math.min(100, Math.max(0, d));
-                }
+                if (!isNaN(d) && isFinite(d)) return Math.min(100, Math.max(0, d));
             }
-            if (!isNaN(precio) && isFinite(precio) && descuentoPct > 0) {
-                precio = +(precio * (1 - (descuentoPct / 100))).toFixed(2);
+            return 0;
+        })();
+
+        if (inputPrecioFinal && inputPrecioFinal.value !== '') {
+            const pf = parseFloat(inputPrecioFinal.value);
+            if (!isNaN(pf) && isFinite(pf)) {
+                precioFinalUnit = pf;
             }
         }
+        if (precioFinalUnit === null) {
+            if (!isNaN(precio) && isFinite(precio)) {
+                precioFinalUnit = +(precio * (1 - (descuentoPct / 100))).toFixed(2);
+            } else {
+                mostrarNotificacion('❌ El precio es inválido', 'error');
+                document.getElementById('precio').focus();
+                return;
+            }
+        }
+        // Usar precio final como precio unitario enviado al backend
+        precio = precioFinalUnit;
         if (isCambio) {
             unidades = -Math.abs(unidades);
         }
@@ -557,6 +594,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('fecha').value = v.fecha;
         document.getElementById('id').value = v.id;
         document.getElementById('precio').value = v.precio;
+        if (inputPrecioFinal) {
+            inputPrecioFinal.value = v.precio; // el precio almacenado es el unitario final
+            precioFinalTouched = true;
+        }
         document.getElementById('unidades').value = v.unidades;
         document.querySelector(`input[name="pago"][value="${v.pago}"]`).checked = true;
         document.getElementById('notas').value = v.notas;
@@ -568,6 +609,25 @@ document.addEventListener('DOMContentLoaded', () => {
     function salirDeEdicion() {
         editIndex = null;
         addBtn.innerHTML = '<i class="fas fa-plus-circle mr-2"></i> Agregar';
+    }
+
+    // ======== PRECIO FINAL: Cálculo automático ========
+    function calcularPrecioFinalUnit() {
+        const precioVal = parseFloat(inputPrecio?.value || '');
+        if (isNaN(precioVal) || !isFinite(precioVal)) return '';
+        if (isCambio) return precioVal.toFixed(2);
+        const dStr = inputDescuento?.value || '';
+        const d = parseFloat(dStr);
+        const descuentoPct = (!isNaN(d) && isFinite(d)) ? Math.min(100, Math.max(0, d)) : 0;
+        const pf = +(precioVal * (1 - (descuentoPct / 100))).toFixed(2);
+        return pf.toFixed(2);
+    }
+
+    function recalcularPrecioFinalSiAuto() {
+        if (!inputPrecioFinal) return;
+        if (precioFinalTouched) return; // respetar edición manual
+        const val = calcularPrecioFinalUnit();
+        inputPrecioFinal.value = val;
     }
 
     // Variables para el modal de confirmación
