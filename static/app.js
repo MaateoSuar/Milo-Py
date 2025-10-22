@@ -31,6 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const precioGroup = document.getElementById('precioGroup');
     const unidadesGroup = document.getElementById('unidadesGroup');
     const precioFinalGroup = document.getElementById('precioFinalGroup');
+    const sidebarClock = document.getElementById('sidebarClock');
+    const sidebarClockDate = document.getElementById('sidebarClockDate');
+    const sidebarClockTime = document.getElementById('sidebarClockTime');
     // Tabs y tarjeta
     const tabVenta = document.getElementById('tabVenta');
     const tabCambio = document.getElementById('tabCambio');
@@ -123,6 +126,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // Aplicar estado inicial de pestañas/placeholder/borde
     aplicarModo();
+
+    // ======== RELOJ LATERAL ========
+    function updateSidebarClock() {
+        if (!sidebarClock) return;
+        const now = new Date();
+        let fecha = now.toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' });
+        // Capitalizar solo la PRIMERA letra del día
+        const comaIdx = fecha.indexOf(',');
+        if (comaIdx !== -1) {
+            const dia = fecha.slice(0, comaIdx);
+            const diaCap = dia.charAt(0).toUpperCase() + dia.slice(1);
+            const resto = fecha.slice(comaIdx);
+            fecha = `${diaCap}${resto}`;
+        } else if (fecha.length > 0) {
+            fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+        }
+        const hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        if (sidebarClockDate) sidebarClockDate.textContent = fecha;
+        if (sidebarClockTime) sidebarClockTime.textContent = hora;
+    }
+    updateSidebarClock();
+    setInterval(updateSidebarClock, 1000);
 
     // ======== EVENTOS =========
     form.addEventListener('submit', handleSubmit);
@@ -835,11 +860,15 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/exportar', { method: 'POST' });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Error al exportar');
-            mostrarNotificacion(data.message, 'success');
+            if (!res.ok || data?.success === false) {
+                const errMsg = data?.error || data?.mensaje || data?.message || 'Error al exportar';
+                throw new Error(errMsg);
+            }
+            // Mensaje fijo solicitado por el usuario
+            mostrarNotificacion('Exportado con Éxito', 'success');
             downloadLink.classList.remove('hidden');
         } catch (err) {
-            mostrarNotificacion(err.message, 'error');
+            mostrarNotificacion(err.message || 'Error al exportar', 'error');
         }
     }
 });
