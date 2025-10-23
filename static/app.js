@@ -871,4 +871,14 @@ document.addEventListener('DOMContentLoaded', () => {
             mostrarNotificacion(err.message || 'Error al exportar', 'error');
         }
     }
+    const watermark = document.getElementById('watermark');
+    function updateWatermarkVisibility() {
+        if (!watermark) return;
+        const doc = document.documentElement;
+        const atBottom = Math.ceil(window.innerHeight + window.scrollY) >= (doc.scrollHeight - 2);
+        watermark.style.opacity = atBottom ? '0.3' : '0';
+    }
+    window.addEventListener('scroll', updateWatermarkVisibility, { passive: true });
+    window.addEventListener('resize', updateWatermarkVisibility);
+    updateWatermarkVisibility();
 });

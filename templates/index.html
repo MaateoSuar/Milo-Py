@@ -72,6 +72,7 @@
                     <i class="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
                 </a>
             </div>
+            
         </div>
     </div>
 
@@ -301,9 +302,8 @@
     <!-- JS -->
     <script src="{{ url_for('static', filename='notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
-    
-    <!-- Marca de agua -->
-    <div class="fixed bottom-4 left-4 w-72 opacity-30 z-50">
+    <!-- Marca de agua fija: fondo inferior izquierdo, no se mueve con el scroll -->
+    <div id="watermark" class="fixed bottom-4 left-4 w-72 pointer-events-none select-none z-10 transition-opacity duration-500" style="opacity: 0;">
         <img src="{{ url_for('static', filename='img/Agua.jpeg') }}" alt="Marca de agua" class="w-full h-auto">
     </div>
 </body>
