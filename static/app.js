@@ -115,6 +115,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Helper: formatear fecha ISO (YYYY-MM-DD) a DD/MM/AAAA para display en tabla
+    function formatFechaDisplay(iso) {
+        if (!iso) return '';
+        const parts = String(iso).split('-');
+        if (parts.length !== 3) return iso;
+        const [y, m, d] = parts;
+        return `${d}/${m}/${y}`;
+    }
+
     // Eventos de pestañas
     tabVenta?.addEventListener('click', () => { isCambio = false; aplicarModo(); });
     tabCambio?.addEventListener('click', () => { isCambio = true; aplicarModo(); });
@@ -874,7 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('tr');
             row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
             row.innerHTML = `
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${venta.fecha}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${formatFechaDisplay(venta.fecha)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${venta.id}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700" title="${venta.nombre}">${venta.nombre || '-'}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">$${Number(venta.precio).toFixed(2)}</td>
