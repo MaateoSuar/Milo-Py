@@ -339,17 +339,17 @@
 
       function setActive(view){
         if (view === 'ventas'){
-          linkVentas.classList.remove('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
-          linkVentas.classList.add('bg-gray-900', 'text-white');
-          linkHist.classList.remove('bg-gray-900', 'text-white');
+          linkVentas.classList.remove('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200', 'pointer-events-none', 'cursor-default');
+          linkVentas.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkHist.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           viewVentas.classList.remove('hidden');
           viewHist.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.display = ''; }
         } else {
-          linkHist.classList.add('bg-gray-900', 'text-white');
-          linkVentas.classList.remove('bg-gray-900', 'text-white');
+          linkHist.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           viewHist.classList.remove('hidden');
           viewVentas.classList.add('hidden');
@@ -575,22 +575,28 @@
             const tbody = contentEl.querySelector('tbody');
             if (!tbody) return;
             if (ventasDia.length === 0){
-              // Si ya no quedan ventas en ese día, eliminar el bloque completo
+              // Si ya no quedan ventas en ese día, eliminar el bloque del día
               const container = contentEl.closest('.border');
+              const monthSection = container?.closest('[data-month-section]');
               container?.remove();
               // Actualizar total del mes
-              const monthTotalEl = group?.closest('[data-month-section]')?.querySelector('[data-month-total]');
-              if (monthTotalEl){
-                const currentText = monthTotalEl.textContent.replace(/[^0-9.,-]/g,'').replace(',', '.');
-                const current = parseFloat(currentText) || 0;
-                // Recalcular del mes completo a partir de data
-                const monthSection = group?.closest('[data-month-section]');
-                if (monthSection){
-                  const ym = monthSection.getAttribute('data-month');
-                  const sumMes = Object.entries(data).filter(([f])=> f.startsWith(ym+'-'))
+              const monthTotalEl = monthSection?.querySelector('[data-month-total]');
+              let sumMes = 0;
+              if (monthSection){
+                const ym = monthSection.getAttribute('data-month');
+                if (ym){
+                  sumMes = Object.entries(data).filter(([f])=> f.startsWith(ym+'-'))
                     .reduce((acc, [,lst])=> acc + lst.reduce((s,v)=> s + Number(v.total||0), 0), 0);
-                  monthTotalEl.textContent = `Total del Mes: $${sumMes.toFixed(2)}`;
                 }
+                // Si no hay más filas en todo el mes, remover la sección del mes completa
+                const anyRowLeft = monthSection.querySelector('tbody tr');
+                if (!anyRowLeft || sumMes <= 0){
+                  monthSection.remove();
+                  return;
+                }
+              }
+              if (monthTotalEl){
+                monthTotalEl.textContent = `Total del Mes: $${(sumMes||0).toFixed(2)}`;
               }
               return;
             }
@@ -615,15 +621,29 @@
             }).join('');
             // Re-attach delete handlers to new buttons
             attachDeleteHandlers();
-            // Recalcular total del mes a partir de data
-            const monthTotalEl = group?.closest('[data-month-section]')?.querySelector('[data-month-total]');
+            // Recalcular total del mes de forma robusta
+            const monthSectionEl = contentEl.closest('[data-month-section]');
+            const monthTotalEl = monthSectionEl?.querySelector('[data-month-total]');
             if (monthTotalEl){
-              const ym = group?.closest('[data-month-section]')?.getAttribute('data-month');
+              const ym = monthSectionEl?.getAttribute('data-month');
+              let sumMes = 0;
               if (ym){
-                const sumMes = Object.entries(data).filter(([f])=> f.startsWith(ym+'-'))
-                  .reduce((acc, [,lst])=> acc + lst.reduce((s,v)=> s + Number(v.total||0), 0), 0);
-                monthTotalEl.textContent = `Total del Mes: $${sumMes.toFixed(2)}`;
+                // Intentar calcular desde los datos del API
+                try{
+                  sumMes = Object.entries(data)
+                    .filter(([f])=> typeof f === 'string' && f.startsWith(ym+'-'))
+                    .reduce((acc, [,lst])=> acc + lst.reduce((s,v)=> s + Number(v.total||0), 0), 0);
+                }catch(_){ sumMes = 0; }
               }
+              if (!ym || !isFinite(sumMes) || sumMes <= 0){
+                // Fallback: sumar los totales visibles en el DOM dentro de la sección del mes
+                sumMes = 0;
+                monthSectionEl?.querySelectorAll('tbody tr').forEach(tr=>{
+                  const val = parseFloat(tr.getAttribute('data-total')||'0');
+                  if (!isNaN(val)) sumMes += val;
+                });
+              }
+              monthTotalEl.textContent = `Total del Mes: $${(sumMes||0).toFixed(2)}`;
             }
           }catch(err){
             console.error('refreshDia error', err);
