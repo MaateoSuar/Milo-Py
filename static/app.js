@@ -156,9 +156,53 @@ document.addEventListener('DOMContentLoaded', () => {
     exportBtn.addEventListener('click', exportarExcel);
 
     // Recalcular Precio Final en tiempo real si no fue editado manualmente
-    if (inputPrecio) inputPrecio.addEventListener('input', () => { precioFinalTouched = false; recalcularPrecioFinalSiAuto(); });
-    if (inputDescuento) inputDescuento.addEventListener('input', () => { if (!isCambio) { precioFinalTouched = false; recalcularPrecioFinalSiAuto(); } });
-    if (inputPrecioFinal) inputPrecioFinal.addEventListener('input', () => { precioFinalTouched = true; });
+    if (inputPrecio) inputPrecio.addEventListener('input', () => {
+        // Al editar Precio, dejamos de fijar Precio Final manualmente
+        precioFinalTouched = false;
+        recalcularPrecioFinalSiAuto();
+    });
+    if (inputDescuento) inputDescuento.addEventListener('input', () => {
+        // Clamp descuento a [0,100]
+        if (typeof inputDescuento.value === 'string') {
+            let d = parseFloat(inputDescuento.value.replace(',', '.'));
+            if (isNaN(d)) d = 0;
+            if (d < 0) d = 0;
+            if (d > 100) d = 100;
+            const fixed = Number.isInteger(d) ? String(d) : d.toFixed(2);
+            if (inputDescuento.value !== fixed) inputDescuento.value = fixed;
+        }
+        // Si estamos en modo Cambio, el descuento no aplica visualmente; sincronizamos por las dudas
+        if (isCambio) {
+            precioFinalTouched = false;
+            recalcularPrecioFinalSiAuto();
+            return;
+        }
+        const dPct = obtenerDescuentoPct();
+        // Si el usuario fijó manualmente el Precio Final, recalcular el Precio base para conservarlo
+        if (precioFinalTouched && inputPrecioFinal && inputPrecioFinal.value !== '') {
+            const pf = parseFloat(inputPrecioFinal.value);
+            if (!isNaN(pf) && isFinite(pf)) {
+                const base = calcularPrecioDesdeFinal(pf, dPct);
+                if (!isNaN(base) && isFinite(base)) inputPrecio.value = base.toFixed(2);
+            }
+        }
+        // Si no está fijado, recalcular el Precio Final a partir del Precio
+        recalcularPrecioFinalSiAuto();
+    });
+    if (inputPrecioFinal) inputPrecioFinal.addEventListener('input', () => {
+        // El usuario está fijando el Precio Final manualmente
+        precioFinalTouched = true;
+        const pf = parseFloat(inputPrecioFinal.value);
+        if (isNaN(pf) || !isFinite(pf)) return;
+        if (isCambio) {
+            // En Cambios, Precio Final = Precio
+            inputPrecio.value = pf.toFixed(2);
+            return;
+        }
+        const dPct = obtenerDescuentoPct();
+        const base = calcularPrecioDesdeFinal(pf, dPct);
+        if (!isNaN(base) && isFinite(base)) inputPrecio.value = base.toFixed(2);
+    });
 
     // Evento para el dropdown de IDs
     inputID.addEventListener('change', function() {
@@ -412,10 +456,27 @@ document.addEventListener('DOMContentLoaded', () => {
             exportBtn.disabled = true;
             exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Exportando...';
             
-            await fetch('/api/exportar', {
+            const res = await fetch('/api/exportar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
+            try {
+                const data = await res.json();
+                if (res.ok && data && data.success !== false) {
+                    if (typeof mostrarNotificacion === 'function') {
+                        mostrarNotificacion('✅ Exportación completada. Historial actualizado.', 'success');
+                    }
+                    // Invalidar/actualizar historial (SPA)
+                    window.dispatchEvent(new Event('historial:invalidate'));
+                } else {
+                    if (typeof mostrarNotificacion === 'function') {
+                        mostrarNotificacion('❌ Falló la exportación', 'error');
+                    }
+                }
+            } catch (_) {
+                // Si no se puede parsear JSON, igual disparamos invalidación por si el backend ya guardó
+                window.dispatchEvent(new Event('historial:invalidate'));
+            }
             
         } catch (error) {
             alert('ERROR AL EXPORTAR');
@@ -653,6 +714,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (precioFinalTouched) return; // respetar edición manual
         const val = calcularPrecioFinalUnit();
         inputPrecioFinal.value = val;
+    }
+
+    // ======== Helpers para bidireccionalidad Precio <-> Precio Final ========
+    function obtenerDescuentoPct() {
+        if (isCambio) return 0;
+        const dStr = inputDescuento?.value || '';
+        const d = parseFloat(dStr);
+        if (isNaN(d) || !isFinite(d)) return 0;
+        return Math.min(100, Math.max(0, d));
+    }
+
+    function calcularPrecioDesdeFinal(precioFinal, descuentoPct) {
+        // precioFinal = precio * (1 - d/100) => precio = precioFinal / (1 - d/100)
+        const denom = 1 - (descuentoPct / 100);
+        if (denom <= 0) return precioFinal; // Evitar división por cero o negativa; tomar base = final
+        return +(precioFinal / denom).toFixed(2);
     }
 
     // Variables para el modal de confirmación

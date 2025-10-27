@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Ventas - MwAccesorios</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="prefetch" href="/" as="document">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        html { zoom: 0.9; }
+        .gradient-bg { background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%); }
+        .logo-text { font-family: 'Arial', sans-serif; letter-spacing: 1px; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+        .input-focus:focus { box-shadow: 0 0 0 3px rgba(219, 212, 187, 0.3); border-color: #DBD4BB; }
+        .btn-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .btn-active:active { transform: translateY(0); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .primary-bg { background-color: #DBD4BB; }
+        .primary-text { color: #5a5343; }
+        .primary-border { border-color: #DBD4BB; }
+        .secondary-bg { background-color: #C7BCB5; }
+        .secondary-text { color: #5a5343; }
+        .secondary-border { border-color: #C7BCB5; }
+        .btn-primary { background-color: #DBD4BB; color: #5a5343; }
+        .btn-primary:hover { background-color: #c9c1a8; }
+        .btn-secondary { background-color: #C7BCB5; color: #5a5343; }
+        .btn-secondary:hover { background-color: #b5a9a1; }
+        body { transition: opacity 150ms ease; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex" style="opacity:0">
+    <!-- Panel de Estadísticas (idéntico al de Registrar Ventas) -->
+    <div class="w-72 bg-white shadow-lg p-6 hidden md:block">
+        <div class="mb-8 text-center">
+            <div class="mx-auto mb-4 flex items-center justify-center">
+                <img src="{{ url_for('static', filename='img/MiloStore.jpeg') }}" alt="Milo Store Logo" class="h-36 w-auto rounded-full border-4 primary-border object-cover">
+            </div>
+            <h1 class="logo-text text-2xl font-bold primary-text">MILO STORE</h1>
+            <p class="text-gray-600 text-sm">Sistema de registro de ventas</p>
+            <!-- Reloj en tiempo real -->
+            <div class="mt-3">
+                <div id="sidebarClock" class="flex items-center justify-center gap-3 primary-bg rounded-lg px-3 py-2 shadow-sm">
+                    <div class="flex flex-col items-center text-center leading-tight w-full">
+                        <span class="text-base primary-text" id="sidebarClockDate"></span>
+                        <span class="text-[26px] font-semibold primary-text tracking-wide" id="sidebarClockTime"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="secondary-bg p-4 rounded-lg">
+                <h3 class="text-sm font-medium secondary-text mb-1">Ventas Hoy</h3>
+                <p class="text-2xl font-bold primary-text" id="ventasHoy">0</p>
+            </div>
+            <div class="primary-bg p-4 rounded-lg">
+                <h3 class="text-sm font-medium primary-text mb-1">Ingresos Totales</h3>
+                <p class="text-2xl font-bold secondary-text" id="ingresosTotales">$0.00</p>
+            </div>
+            <div class="secondary-bg p-4 rounded-lg">
+                <h3 class="text-sm font-medium secondary-text mb-1">Promedio por Venta</h3>
+                <p class="text-2xl font-bold primary-text" id="promedioVenta">$0.00</p>
+            </div>
+            <!-- Botón de Cerrar Sesión -->
+            <div class="mt-8">
+                <a href="/logout" class="w-full flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
+                </a>
+            </div>
+        </div>
+    </div>
+
+    
+
+    <div class="flex-1 px-6 py-8">
+        <!-- Navegación principal -->
+        <div class="mb-6 flex items-center gap-2">
+            <a href="/" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200">Registrar Ventas</a>
+            <a href="/historial" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold">Historial de Ventas</a>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg md:text-xl font-semibold primary-text">Historial de Ventas</h2>
+                    <a href="/" class="px-3 py-2 md:px-4 md:py-2 btn-secondary rounded-lg text-sm font-medium hover:bg-opacity-90">
+                        <i class="fas fa-plus mr-2"></i> Registrar nuevas ventas
+                    </a>
+                </div>
+
+                <div id="historyContainer" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmación (historial) -->
+    <div id="confirmModalHistory" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                </div>
+                <h3 id="confirmHistoryTitle" class="text-lg leading-6 font-medium text-gray-900 mb-2">Confirmar acción</h3>
+                <p id="confirmHistoryMsg" class="text-sm text-gray-500 mb-6">¿Deseas continuar?</p>
+                <div class="flex justify-center space-x-4">
+                    <button type="button" id="confirmHistoryCancel" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                        Cancelar
+                    </button>
+                    <button type="button" id="confirmHistoryOk" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
+    <script>
+    function confirmarAccionHistorial({ titulo, mensaje, confirmarTexto = 'Confirmar', cancelarTexto = 'Cancelar' }) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('confirmModalHistory');
+            const titleEl = document.getElementById('confirmHistoryTitle');
+            const msgEl = document.getElementById('confirmHistoryMsg');
+            const btnOk = document.getElementById('confirmHistoryOk');
+            const btnCancel = document.getElementById('confirmHistoryCancel');
+
+            const oldTitle = titleEl.textContent;
+            const oldMsg = msgEl.textContent;
+            const oldOk = btnOk.textContent;
+            const oldCancel = btnCancel.textContent;
+
+            titleEl.textContent = titulo;
+            msgEl.textContent = mensaje;
+            btnOk.textContent = confirmarTexto;
+            btnCancel.textContent = cancelarTexto;
+            modal.classList.remove('hidden');
+
+            const onOk = () => { cleanup(); resolve(true); };
+            const onCancel = () => { cleanup(); resolve(false); };
+            function cleanup() {
+                modal.classList.add('hidden');
+                btnOk.removeEventListener('click', onOk);
+                btnCancel.removeEventListener('click', onCancel);
+                titleEl.textContent = oldTitle;
+                msgEl.textContent = oldMsg;
+                btnOk.textContent = oldOk;
+                btnCancel.textContent = oldCancel;
+            }
+            btnOk.addEventListener('click', onOk, { once: true });
+            btnCancel.addEventListener('click', onCancel, { once: true });
+        });
+    }
+    function formatearFechaDisplay(iso) {
+        if (!iso) return '';
+        const parts = iso.split('-');
+        if (parts.length !== 3) return iso;
+        const [y, m, d] = parts;
+        return `${d}/${m}/${y}`;
+    }
+    function formatearMesDisplay(ym) {
+        if (!ym || ym.length < 7) return ym || '';
+        const [y, m] = ym.split('-');
+        const fecha = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+        const mes = fecha.toLocaleDateString('es-AR', { month: 'long' });
+        const mesCap = mes.charAt(0).toUpperCase() + mes.slice(1);
+        return `${mesCap} ${y}`;
+    }
+
+    // ======== RELOJ LATERAL (historial) ========
+    function updateSidebarClockHist() {
+        const sidebarClock = document.getElementById('sidebarClock');
+        if (!sidebarClock) return;
+        const sidebarClockDate = document.getElementById('sidebarClockDate');
+        const sidebarClockTime = document.getElementById('sidebarClockTime');
+        const now = new Date();
+        const weekday = now.toLocaleDateString('es-AR', { weekday: 'long' });
+        const day = now.toLocaleDateString('es-AR', { day: '2-digit' });
+        let month = now.toLocaleDateString('es-AR', { month: 'long' });
+        const diaCap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const mesCap = month.charAt(0).toUpperCase() + month.slice(1);
+        const fecha = `${diaCap}, ${day} de ${mesCap}`;
+        const hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        if (sidebarClockDate) sidebarClockDate.textContent = fecha;
+        if (sidebarClockTime) sidebarClockTime.textContent = hora;
+    }
+
+    // ======== ESTADÍSTICAS LATERAL (historial) ========
+    async function cargarEstadisticasHist() {
+        try {
+            const res = await fetch('/api/ventas');
+            const ventas = await res.json();
+            const hoy = new Date().toISOString().split('T')[0];
+            const ventasHoyArr = Array.isArray(ventas) ? ventas.filter(v => v.fecha === hoy) : [];
+            const cant = ventasHoyArr.length;
+            const total = ventasHoyArr.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
+            const promedio = cant > 0 ? total / cant : 0;
+            const elCant = document.getElementById('ventasHoy');
+            const elTotal = document.getElementById('ingresosTotales');
+            const elProm = document.getElementById('promedioVenta');
+            if (elCant) elCant.textContent = String(cant);
+            if (elTotal) elTotal.textContent = `$${total.toFixed(2)}`;
+            if (elProm) elProm.textContent = `$${promedio.toFixed(2)}`;
+        } catch (e) {
+            // Silencioso en historial
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const container = document.getElementById('historyContainer');
+        // Sidebar idéntico al de Registrar Ventas (sin controles responsive específicos)
+
+        // Iniciar reloj del sidebar
+        updateSidebarClockHist();
+        setInterval(updateSidebarClockHist, 1000);
+        // Cargar y refrescar estadísticas del sidebar
+        cargarEstadisticasHist();
+        setInterval(cargarEstadisticasHist, 60000);
+
+        try {
+            const res = await fetch('/api/historial');
+            const data = await res.json();
+            const ventasPorFecha = data || {};
+            const fechas = Object.keys(data).sort((a, b) => b.localeCompare(a));
+            if (fechas.length === 0) {
+                container.innerHTML = '<div class="text-gray-500">No hay ventas registradas aún.</div>';
+                return;
+            }
+
+            // Agrupar por meses
+            const meses = {};
+            fechas.forEach(f => {
+                const ym = f.substring(0, 7);
+                if (!meses[ym]) meses[ym] = [];
+                meses[ym].push(f);
+            });
+            const monthKeys = Object.keys(meses).sort((a, b) => b.localeCompare(a));
+            monthKeys.forEach(ym => {
+                // Total del mes
+                let monthTotal = 0;
+                (meses[ym] || []).forEach(d => {
+                    const ventasDia = data[d] || [];
+                    monthTotal += ventasDia.reduce((acc, v) => acc + (Number(v.total) || (Number(v.precio) * Number(v.unidades)) || 0), 0);
+                });
+
+                const monthSection = document.createElement('div');
+                monthSection.className = 'mb-6';
+                monthSection.setAttribute('data-month-section', ym);
+                monthSection.innerHTML = `
+                    <button class="w-full flex items-center justify-between px-3 md:px-4 py-2 text-left bg-gray-100 rounded hover:bg-gray-200" data-month-toggle>
+                        <div class="flex items-center gap-2 md:gap-3">
+                            <i class="fas fa-chevron-right text-gray-600" data-month-arrow></i>
+                            <h3 class="text-base md:text-lg font-semibold primary-text">${formatearMesDisplay(ym)}</h3>
+                        </div>
+                        <div class="text-[11px] sm:text-xs md:text-sm text-gray-700 font-bold" data-month-total>Total del Mes: $${monthTotal.toFixed(2)}</div>
+                    </button>
+                    <div data-month-content class="mt-3 space-y-3 hidden"></div>
+                `;
+                const monthContent = monthSection.querySelector('[data-month-content]');
+                const monthToggle = monthSection.querySelector('[data-month-toggle]');
+                const monthArrow = monthSection.querySelector('[data-month-arrow]');
+                monthArrow.classList.remove('fa-chevron-down');
+                monthArrow.classList.add('fa-chevron-right');
+                monthToggle.addEventListener('click', () => {
+                    const isHidden = monthContent.classList.contains('hidden');
+                    monthContent.classList.toggle('hidden');
+                    monthArrow.classList.toggle('fa-chevron-right', !isHidden);
+                    monthArrow.classList.toggle('fa-chevron-down', isHidden);
+                });
+
+                const dias = meses[ym].sort((a, b) => b.localeCompare(a));
+                dias.forEach(fecha => {
+                    const ventas = ventasPorFecha[fecha] || [];
+                    const totalDia = ventas.reduce((acc, v) => acc + (Number(v.total) || (Number(v.precio) * Number(v.unidades)) || 0), 0);
+
+                    const group = document.createElement('div');
+                    group.className = 'border border-gray-200 rounded-lg';
+                    group.innerHTML = `
+                        <button class="w-full flex items-center justify-between px-3 md:px-4 py-3 text-left hover:bg-gray-50" data-toggle>
+                            <div class="flex items-center gap-2 md:gap-3">
+                                <i class="fas fa-chevron-right text-gray-600" data-arrow></i>
+                                <span class="font-semibold text-gray-800">${formatearFechaDisplay(fecha)}</span>
+                                <span class="text-[11px] sm:text-xs text-gray-500" data-count>(${ventas.length} ventas)</span>
+                            </div>
+                            <div class="text-[11px] sm:text-xs md:text-sm text-gray-700" data-total>Total día: $${totalDia.toFixed(2)}</div>
+                        </button>
+                        <div class="hidden" data-content data-fecha="${fecha}"></div>
+                    `;
+                    monthContent.appendChild(group);
+
+                    const toggleBtn = group.querySelector('[data-toggle]');
+                    const content = group.querySelector('[data-content]');
+                    const arrow = group.querySelector('[data-arrow]');
+                    arrow.classList.remove('fa-chevron-down');
+                    arrow.classList.add('fa-chevron-right');
+                    toggleBtn.addEventListener('click', () => {
+                        const isHidden = content.classList.contains('hidden');
+                        content.classList.toggle('hidden');
+                        arrow.classList.toggle('fa-chevron-right', !isHidden);
+                        arrow.classList.toggle('fa-chevron-down', isHidden);
+                        // Lazy render: si se expande por primera vez, construir tabla
+                        if (isHidden) {
+                            renderTablaDia(content, ventasPorFecha[fecha] || [], fecha, totalDia, monthSection);
+                        }
+                    });
+
+                    // Los handlers de eliminación se adjuntan cuando se renderiza la tabla (lazy)
+                });
+                container.appendChild(monthSection);
+            });
+        } catch (e) {
+            container.innerHTML = `<div class="text-red-600">Error cargando historial</div>`;
+            if (typeof mostrarNotificacion === 'function') {
+                mostrarNotificacion('❌ Error cargando historial: ' + e.message, 'error');
+            }
+        }
+    });
+
+    // Render on demand de la tabla del día
+    function renderTablaDia(contentEl, ventas, fecha, totalDia, monthSection) {
+        if (!contentEl || contentEl.dataset.rendered === '1') return;
+        const tableHtml = `
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-[11px] sm:text-xs md:text-sm">
+                    <thead class="primary-bg">
+                        <tr>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Fecha</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">ID</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Nombre</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Precio</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Unidades</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Total</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Forma de Pago</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Notas</th>
+                            <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${ventas.map((v, i) => {
+                            const rowTotal = (Number(v.total) || (Number(v.precio) * Number(v.unidades)) || 0);
+                            return `
+                            <tr data-index="${i}" data-total="${rowTotal}">
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${formatearFechaDisplay(v.fecha) || ''}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm font-medium text-gray-900 text-center">${v.id || '-'}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.nombre || '-'}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${Number(v.precio).toFixed(2)}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.unidades}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${rowTotal.toFixed(2)}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
+                                <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas || ''}">${v.notas || '-'}</td>
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
+                                    <button data-action="delete-history" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
+                                        <i class="fas fa-trash text-base"></i>
+                                    </button>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        contentEl.innerHTML = tableHtml;
+        contentEl.dataset.rendered = '1';
+
+        // Adjuntar handlers de eliminación ahora que la tabla existe
+        contentEl.querySelectorAll('[data-action="delete-history"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const fechaSel = btn.getAttribute('data-fecha');
+                const idx = btn.getAttribute('data-index');
+                if (!fechaSel || idx === null) return;
+                const confirmado = await confirmarAccionHistorial({
+                    titulo: '¿Eliminar registro? ',
+                    mensaje: 'Esta acción no se puede deshacer.',
+                    confirmarTexto: 'Eliminar',
+                    cancelarTexto: 'Cancelar'
+                });
+                if (!confirmado) return;
+                try {
+                    const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        throw new Error(data.mensaje || data.error || 'Error al eliminar');
+                    }
+                    const row = btn.closest('tr');
+                    const rowTotal = parseFloat(row?.dataset?.total || '0');
+                    row?.remove();
+                    const group = monthSection.querySelector(`[data-content][data-fecha="${fechaSel}"]`)?.closest('[data-content]')?.parentElement;
+                    const countEl = group ? group.querySelector('[data-count]') : null;
+                    if (countEl) {
+                        const match = countEl.textContent.match(/\((\d+)/);
+                        const current = match ? parseInt(match[1]) : ventas.length;
+                        const next = Math.max(0, current - 1);
+                        countEl.textContent = `(${next} ventas)`;
+                    }
+                    const totalEl = group ? group.querySelector('[data-total]') : null;
+                    if (totalEl) {
+                        const currentText = totalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
+                        const current = parseFloat(currentText) || totalDia;
+                        const next = Math.max(0, +(current - rowTotal).toFixed(2));
+                        totalEl.textContent = `Total día: $${next.toFixed(2)}`;
+                    }
+                    // Actualizar total del mes
+                    const monthTotalEl = monthSection.querySelector('[data-month-total]');
+                    if (monthTotalEl) {
+                        const currentText = monthTotalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
+                        const currentMonth = parseFloat(currentText) || 0;
+                        const nextMonth = Math.max(0, +(currentMonth - rowTotal).toFixed(2));
+                        monthTotalEl.textContent = `Total del Mes: $${nextMonth.toFixed(2)}`;
+                    }
+                    const tbody = contentEl.querySelector('tbody');
+                    if (tbody && tbody.children.length === 0) {
+                        // Si el día quedó vacío, removemos el grupo entero
+                        const groupContainer = contentEl.closest('.border');
+                        groupContainer?.remove();
+                    }
+                    if (typeof mostrarNotificacion === 'function') {
+                        mostrarNotificacion('✅ Registro eliminado', 'success');
+                    }
+                    // Refrescar la página para re-sincronizar índices y habilitar múltiples eliminaciones
+                    setTimeout(()=>{ try { window.location.reload(); } catch(_){} }, 200);
+                } catch (err) {
+                    if (typeof mostrarNotificacion === 'function') {
+                        mostrarNotificacion('❌ ' + err.message, 'error');
+                    } else {
+                        alert('Error: ' + err.message);
+                    }
+                }
+            });
+        });
+    }
+    </script>
+    <script>
+    (function(){
+      function fadeIn(){ document.body.style.opacity = '1'; }
+      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', fadeIn); } else { fadeIn(); }
+      document.querySelectorAll('a[href="/"], a[href="/historial"]').forEach(function(a){
+        a.addEventListener('click', function(e){
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          var href = this.getAttribute('href');
+          document.body.style.opacity = '0';
+          setTimeout(function(){ window.location.href = href; }, 120);
+        });
+      });
+      window.addEventListener('pageshow', function(){ document.body.style.opacity = '1'; });
+    })();
+
+</script>
+</body>
+</html>

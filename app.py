@@ -2,9 +2,14 @@ from flask import Flask, render_template, request, jsonify, send_file, abort, re
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from functools import wraps
 from pathlib import Path
-from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas
+from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas, cargar_ventas_desde_historial
+from services.history_service import leer_historial, agregar_ventas_a_historial, eliminar_historial_por_fecha_idx
 from services.catalog_service import obtener_catalogo, obtener_rangos
 from config import GOOGLE_SHEETS_CONFIG, GOOGLE_APPS_SCRIPT
+try:
+    from services.db import init_db
+except Exception:
+    init_db = None
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key in production
@@ -13,6 +18,15 @@ app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key in
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# Initialize DB eagerly (Flask 3 ya no expone before_first_request)
+try:
+    if init_db:
+        ok = init_db()
+        if ok:
+            print("🗄️ Base de datos inicializada (Postgres)")
+except Exception as e:
+    print(f"⚠️ No se pudo inicializar la base de datos: {e}")
 
 # User class for authentication
 class User(UserMixin):
@@ -64,10 +78,22 @@ def logout():
 def index():
     return render_template("index.html")
 
+# Nueva vista: Historial de Ventas
+@app.route("/historial")
+@login_required
+def historial():
+    # Redirigir a la vista SPA en el index con la pestaña historial activa
+    return redirect(url_for('index', view='historial'))
+
 # API de ventas (memoria)
 @app.route("/api/ventas", methods=["GET"])
 def api_listar_ventas():
     return jsonify(listar_ventas())
+
+# API de historial agrupado por fecha (persistente)
+@app.route("/api/historial", methods=["GET"])
+def api_historial():
+    return jsonify(leer_historial())
 
 @app.route("/api/ventas", methods=["POST"])
 def api_agregar_venta():
@@ -97,6 +123,16 @@ def api_eliminar_venta(index: int):
     except IndexError:
         return jsonify({"error": "Índice fuera de rango"}), 404
 
+# Eliminar por fecha e índice relativo dentro del día (persistente)
+@app.route("/api/historial/<fecha>/<int:idx>", methods=["DELETE"])
+def api_eliminar_historial_por_fecha(fecha: str, idx: int):
+    if idx < 0:
+        return jsonify({"success": False, "error": "Índice inválido"}), 400
+    ok = eliminar_historial_por_fecha_idx(fecha, idx)
+    if not ok:
+        return jsonify({"success": False, "error": "No se encontró elemento para esa fecha/índice"}), 404
+    return jsonify({"success": True}), 200
+
 @app.route("/api/ventas", methods=["DELETE"])
 def api_eliminar_todas_las_ventas():
     """Vacía todas las ventas en memoria (confirmado desde el front)"""
@@ -112,7 +148,43 @@ def api_exportar():
     """Exporta TODAS las ventas acumuladas en memoria a Google Sheets"""
     from services.sales_service import exportar_todas_las_ventas_a_sheets
     resultado = exportar_todas_las_ventas_a_sheets()
+    # Si la exportación fue exitosa, ahora SÍ persistimos en historial
+    try:
+        if resultado and resultado.get("success"):
+            ventas_actuales = listar_ventas()
+            if ventas_actuales:
+                agregar_ventas_a_historial(ventas_actuales)
+    except Exception:
+        # No romper la respuesta original del endpoint
+        pass
     return jsonify(resultado), 200
+
+# Diagnóstico: exporta una fila de prueba vía Apps Script / Sheets
+@app.route("/api/diagnostico", methods=["GET"])
+@login_required
+def api_diagnostico():
+    """Endpoint de diagnóstico del sistema"""
+    try:
+        ventas_memoria = len(listar_ventas())
+        historial = leer_historial()
+        ventas_historial = sum(len(ventas) for ventas in historial.values())
+        fechas_historial = len(historial.keys())
+        
+        # Calcular tamaño aproximado del archivo
+        import os
+        hist_path = Path(__file__).resolve().parent / 'data' / 'historial.json'
+        tamaño_archivo = os.path.getsize(hist_path) if hist_path.exists() else 0
+        
+        return jsonify({
+            "ventas_en_memoria": ventas_memoria,
+            "ventas_en_historial": ventas_historial,
+            "fechas_en_historial": fechas_historial,
+            "tamaño_archivo_kb": round(tamaño_archivo / 1024, 2),
+            "estado": "✅ Sistema funcionando correctamente",
+            "recomendacion": "Mantener sistema actual" if ventas_historial < 50000 else "Considerar migración a base de datos"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Diagnóstico: exporta una fila de prueba vía Apps Script / Sheets
 @app.route("/api/exportar_prueba", methods=["POST"])
@@ -195,5 +267,43 @@ def test_gas():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
+# Estado de DB (diagnóstico rápido)
+@app.route("/api/db_status", methods=["GET"])
+def api_db_status():
+    try:
+        from services.history_service import DATABASE_URL as DB_URL_IN_HS, USE_DB as USE_DB_IN_HS
+        status = {
+            "database_url_set": bool(DB_URL_IN_HS),
+            "using_db": bool(USE_DB_IN_HS),
+        }
+        if not USE_DB_IN_HS:
+            status["message"] = "DATABASE_URL no configurada; usando JSON"
+            return jsonify(status), 200
+        # Intentar contar filas en ventas
+        from sqlalchemy import select, func
+        from services.db import get_session
+        from services.models import Venta
+        session = get_session()
+        try:
+            total = session.execute(select(func.count(Venta.id))).scalar() or 0
+            status["ventas_count"] = int(total)
+        finally:
+            session.close()
+        return jsonify(status), 200
+    except Exception as e:
+        return jsonify({"using_db": False, "error": str(e)}), 500
+
 if __name__ == "__main__":
+    # Cargar ventas desde historial persistente al iniciar el servidor
+    print("🔄 Iniciando servidor...")
+    # Inicializar DB si está configurada
+    try:
+        if init_db:
+            ok = init_db()
+            if ok:
+                print("🗄️ Base de datos inicializada (Postgres)")
+    except Exception as e:
+        print(f"⚠️ No se pudo inicializar la base de datos: {e}")
+    ventas_cargadas = cargar_ventas_desde_historial()
+    print(f"📊 Sistema iniciado con {ventas_cargadas} ventas cargadas desde historial persistente")
     app.run(debug=True)

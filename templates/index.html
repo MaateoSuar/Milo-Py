@@ -6,6 +6,8 @@
     <title>Milo Store - Sistema de Ventas</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="prefetch" href="/historial" as="document">
+    <link rel="prefetch" href="/historial" as="document">
     <!-- Ya no usamos XLSX en el front: lo hace el backend con Pandas -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -30,6 +32,7 @@
         .btn-primary:hover { background-color: #c9c1a8; }
         .btn-secondary { background-color: #C7BCB5; color: #5a5343; }
         .btn-secondary:hover { background-color: #b5a9a1; }
+        body { transition: none; }
     </style>
 </head>
 <body class="gradient-bg min-h-screen flex">
@@ -76,7 +79,29 @@
         </div>
     </div>
 
-    <div class="flex-1 container mx-auto px-4 py-8 max-w-7xl">
+    <div class="flex-1 px-6 py-8">
+        <!-- Navegación principal -->
+        <div class="mb-6 flex items-center gap-2">
+            <a href="/" data-view="ventas" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold">Registrar Ventas</a>
+            <a href="/historial" data-view="historial" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200">Historial de Ventas</a>
+        </div>
+        <!-- VISTA: Historial (SPA) -->
+        <div id="view-historial" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg md:text-xl font-semibold primary-text">Historial de Ventas</h2>
+                        <button type="button" data-view="ventas" class="px-3 py-2 md:px-4 md:py-2 btn-secondary rounded-lg text-sm font-medium hover:bg-opacity-90">
+                            <i class="fas fa-plus mr-2"></i> Registrar nuevas ventas
+                        </button>
+                    </div>
+                    <div id="historyContainer" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISTA: Ventas -->
+        <div id="view-ventas">
         <!-- Formulario -->
         <div id="ventaFormCard" class="bg-white rounded-xl shadow-lg overflow-hidden">
             <div class="p-6">
@@ -233,7 +258,7 @@
                             <span id="totalVentas">0</span> productos registrados
                         </div>
                         <div class="flex gap-2">
-<button id="exportBtn"
+                            <button id="exportBtn"
                                 class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 btn-hover btn-active transition-all">
                                 <i class="fas fa-file-excel mr-2"></i> Exportar a Google Sheets
                             </button>
@@ -302,6 +327,371 @@
     <!-- JS -->
     <script src="{{ url_for('static', filename='notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+    // SPA: cambio instantáneo entre Ventas e Historial sin recargar
+    (function(){
+      const linkVentas = document.querySelector('a[data-view="ventas"]');
+      const linkHist = document.querySelector('a[data-view="historial"]');
+      const viewVentas = document.getElementById('view-ventas');
+      const viewHist = document.getElementById('view-historial');
+      let histRendered = false;
+      let histInvalidated = false;
+
+      function setActive(view){
+        if (view === 'ventas'){
+          linkVentas.classList.remove('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkVentas.classList.add('bg-gray-900', 'text-white');
+          linkHist.classList.remove('bg-gray-900', 'text-white');
+          linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          viewVentas.classList.remove('hidden');
+          viewHist.classList.add('hidden');
+          const wm = document.getElementById('watermark');
+          if (wm) { wm.style.display = ''; }
+        } else {
+          linkHist.classList.add('bg-gray-900', 'text-white');
+          linkVentas.classList.remove('bg-gray-900', 'text-white');
+          linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          viewHist.classList.remove('hidden');
+          viewVentas.classList.add('hidden');
+          const wm = document.getElementById('watermark');
+          if (wm) { wm.style.display = 'none'; }
+        }
+      }
+
+      function goto(view){
+        setActive(view);
+        if (view === 'historial'){
+          renderHistorial();
+          histRendered = true;
+          histInvalidated = false;
+        }
+      }
+
+      // Interceptar clicks
+      [linkVentas, linkHist].forEach(a => {
+        if (!a) return;
+        a.addEventListener('click', function(e){
+          e.preventDefault();
+          const v = this.getAttribute('data-view');
+          goto(v);
+        });
+      });
+
+      // También el botón dentro del historial
+      document.addEventListener('click', function(e){
+        const t = e.target.closest('[data-view="ventas"]');
+        if (t) { e.preventDefault(); goto('ventas'); }
+      });
+
+      // Helpers de historial
+      function confirmarAccion({ titulo = 'Confirmar', mensaje = '¿Desea continuar?', confirmarTexto = 'Confirmar', cancelarTexto = 'Cancelar' } = {}){
+        return new Promise((resolve)=>{
+          const modal = document.getElementById('confirmModal');
+          const btnOk = document.getElementById('confirmDelete');
+          const btnCancel = document.getElementById('confirmCancel');
+          // Elementos de texto dentro del modal (usamos los existentes)
+          const titleEl = modal?.querySelector('h3');
+          const msgEl = modal?.querySelector('p');
+
+          const oldTitle = titleEl ? titleEl.textContent : '';
+          const oldMsg = msgEl ? msgEl.textContent : '';
+          const oldOk = btnOk ? btnOk.textContent : '';
+          const oldCancel = btnCancel ? btnCancel.textContent : '';
+
+          if (titleEl) titleEl.textContent = titulo;
+          if (msgEl) msgEl.textContent = mensaje;
+          if (btnOk) btnOk.textContent = confirmarTexto;
+          if (btnCancel) btnCancel.textContent = cancelarTexto;
+          modal?.classList.remove('hidden');
+
+          const onOk = ()=>{ cleanup(); resolve(true); };
+          const onCancel = ()=>{ cleanup(); resolve(false); };
+          function cleanup(){
+            modal?.classList.add('hidden');
+            btnOk?.removeEventListener('click', onOk);
+            btnCancel?.removeEventListener('click', onCancel);
+            if (titleEl) titleEl.textContent = oldTitle;
+            if (msgEl) msgEl.textContent = oldMsg;
+            if (btnOk) btnOk.textContent = oldOk;
+            if (btnCancel) btnCancel.textContent = oldCancel;
+          }
+          btnOk?.addEventListener('click', onOk, { once: true });
+          btnCancel?.addEventListener('click', onCancel, { once: true });
+        });
+      }
+      function formatearFechaDisplay(iso){
+        if (!iso) return '';
+        const parts = String(iso).split('-');
+        if (parts.length!==3) return iso;
+        const [y,m,d]=parts; return `${d}/${m}/${y}`;
+      }
+      function formatearMesDisplay(ym){
+        if (!ym || ym.length<7) return ym||'';
+        const [y,m] = ym.split('-');
+        const fecha = new Date(parseInt(y,10), parseInt(m,10)-1, 1);
+        const mes = fecha.toLocaleDateString('es-AR',{month:'long'});
+        return mes.charAt(0).toUpperCase()+mes.slice(1)+` ${y}`;
+      }
+
+      async function renderHistorial(){
+        const container = document.getElementById('historyContainer');
+        container.innerHTML = '<div class="text-gray-500">Cargando...</div>';
+        try{
+          const res = await fetch('/api/historial');
+          const data = await res.json();
+          const ventasPorFecha = data || {};
+          const fechas = Object.keys(ventasPorFecha).sort((a,b)=>b.localeCompare(a));
+          if (fechas.length===0){ container.innerHTML = '<div class="text-gray-500">No hay ventas registradas aún.</div>'; return; }
+
+          container.innerHTML = '';
+          // Agrupar por mes
+          const meses = {};
+          fechas.forEach(f=>{ const ym=f.substring(0,7); (meses[ym]??=([])).push(f); });
+          Object.keys(meses).sort((a,b)=>b.localeCompare(a)).forEach(ym=>{
+            let monthTotal = 0;
+            (meses[ym]||[]).forEach(d=>{ const arr=ventasPorFecha[d]||[]; monthTotal += arr.reduce((acc,v)=>acc + (Number(v.total)|| (Number(v.precio)*Number(v.unidades))||0),0); });
+            const monthSection = document.createElement('div');
+            monthSection.className='mb-6';
+            monthSection.setAttribute('data-month-section', ym);
+            monthSection.innerHTML = `
+              <button class="w-full flex items-center justify-between px-3 md:px-4 py-2 text-left bg-gray-100 rounded hover:bg-gray-200" data-month-toggle>
+                <div class="flex items-center gap-2 md:gap-3">
+                  <i class="fas fa-chevron-right text-gray-600" data-month-arrow></i>
+                  <h3 class="text-base md:text-lg font-semibold primary-text">${formatearMesDisplay(ym)}</h3>
+                </div>
+                <div class="text-[11px] sm:text-xs md:text-sm text-gray-700 font-bold" data-month-total>Total del Mes: $${monthTotal.toFixed(2)}</div>
+              </button>
+              <div data-month-content class="mt-3 space-y-3 hidden"></div>`;
+            const monthContent = monthSection.querySelector('[data-month-content]');
+            const monthToggle = monthSection.querySelector('[data-month-toggle]');
+            const monthArrow = monthSection.querySelector('[data-month-arrow]');
+            monthArrow.classList.add('fa-chevron-right');
+            monthToggle.addEventListener('click', ()=>{
+              const hidden = monthContent.classList.contains('hidden');
+              monthContent.classList.toggle('hidden');
+              monthArrow.classList.toggle('fa-chevron-right', !hidden);
+              monthArrow.classList.toggle('fa-chevron-down', hidden);
+            });
+
+            (meses[ym].sort((a,b)=>b.localeCompare(a))).forEach(fecha=>{
+              const ventas = ventasPorFecha[fecha]||[];
+              const totalDia = ventas.reduce((acc,v)=>acc + (Number(v.total)|| (Number(v.precio)*Number(v.unidades))||0),0);
+              const group = document.createElement('div');
+              group.className='border border-gray-200 rounded-lg';
+              group.innerHTML = `
+                <button class="w-full flex items-center justify-between px-3 md:px-4 py-3 text-left hover:bg-gray-50" data-toggle>
+                  <div class="flex items-center gap-2 md:gap-3">
+                    <i class="fas fa-chevron-right text-gray-600" data-arrow></i>
+                    <span class="font-semibold text-gray-800">${formatearFechaDisplay(fecha)}</span>
+                    <span class="text-[11px] sm:text-xs text-gray-500" data-count>(${ventas.length} ventas)</span>
+                  </div>
+                  <div class="text-[11px] sm:text-xs md:text-sm text-gray-700" data-total>Total día: $${totalDia.toFixed(2)}</div>
+                </button>
+                <div class="hidden" data-content data-fecha="${fecha}"></div>`;
+              monthContent.appendChild(group);
+
+              const toggleBtn = group.querySelector('[data-toggle]');
+              const content = group.querySelector('[data-content]');
+              const arrow = group.querySelector('[data-arrow]');
+              arrow.classList.add('fa-chevron-right');
+              toggleBtn.addEventListener('click', ()=>{
+                const hidden = content.classList.contains('hidden');
+                content.classList.toggle('hidden');
+                arrow.classList.toggle('fa-chevron-right', !hidden);
+                arrow.classList.toggle('fa-chevron-down', hidden);
+                if (hidden){ renderTablaDia(content, ventasPorFecha[fecha]||[], fecha, totalDia, monthSection); }
+              });
+            });
+            container.appendChild(monthSection);
+          });
+        }catch(e){
+          container.innerHTML = '<div class="text-red-600">Error cargando historial</div>';
+        }
+      }
+
+      function renderTablaDia(contentEl, ventas, fecha, totalDia, monthSection){
+        if (!contentEl || contentEl.dataset.rendered==='1') return;
+        const tableHtml = `
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200 text-[11px] sm:text-xs md:text-sm">
+            <thead class="primary-bg">
+              <tr>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Fecha</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">ID</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Nombre</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Precio</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Unidades</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Total</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Pago</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Notas</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              ${ventas.map((v,i)=>{
+                const rowTotal = (Number(v.total) || (Number(v.precio)*Number(v.unidades)) || 0);
+                return `
+                <tr data-index="${i}" data-total="${rowTotal}">
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${formatearFechaDisplay(v.fecha)||''}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm font-medium text-gray-900 text-center">${v.id||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.nombre||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${Number(v.precio).toFixed(2)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.unidades}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${rowTotal.toFixed(2)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
+                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas||''}">${v.notas||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
+                    <button data-action="delete-history" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
+                      <i class="fas fa-trash text-base"></i>
+                    </button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+        contentEl.innerHTML = tableHtml;
+        contentEl.dataset.rendered='1';
+
+        // Helper para refrescar solo un día tras eliminar
+        async function refreshDia(fechaSel){
+          try{
+            const res = await fetch('/api/historial');
+            const data = await res.json();
+            const ventasDia = data[fechaSel] || [];
+            // Recalcular totales
+            const totalDia = ventasDia.reduce((s,v)=> s + Number(v.total||0), 0);
+            // Ubicar contenedores del grupo del día actual
+            const group = contentEl.closest('.border') || contentEl.parentElement;
+            const countEl = group ? group.querySelector('[data-count]') : null;
+            if (countEl){
+              countEl.textContent = `(${ventasDia.length} ventas)`;
+            }
+            const totalEl = group ? group.querySelector('[data-total]') : null;
+            if (totalEl){
+              totalEl.textContent = `Total día: $${totalDia.toFixed(2)}`;
+            }
+            // Rebuild tbody
+            const tbody = contentEl.querySelector('tbody');
+            if (!tbody) return;
+            if (ventasDia.length === 0){
+              // Si ya no quedan ventas en ese día, eliminar el bloque completo
+              const container = contentEl.closest('.border');
+              container?.remove();
+              // Actualizar total del mes
+              const monthTotalEl = group?.closest('[data-month-section]')?.querySelector('[data-month-total]');
+              if (monthTotalEl){
+                const currentText = monthTotalEl.textContent.replace(/[^0-9.,-]/g,'').replace(',', '.');
+                const current = parseFloat(currentText) || 0;
+                // Recalcular del mes completo a partir de data
+                const monthSection = group?.closest('[data-month-section]');
+                if (monthSection){
+                  const ym = monthSection.getAttribute('data-month');
+                  const sumMes = Object.entries(data).filter(([f])=> f.startsWith(ym+'-'))
+                    .reduce((acc, [,lst])=> acc + lst.reduce((s,v)=> s + Number(v.total||0), 0), 0);
+                  monthTotalEl.textContent = `Total del Mes: $${sumMes.toFixed(2)}`;
+                }
+              }
+              return;
+            }
+            tbody.innerHTML = ventasDia.map((v,i)=>{
+              const rowTotal = Number(v.total|| (Number(v.precio||0)*Number(v.unidades||0)) || 0);
+              return `
+                <tr class="hover:bg-gray-50" data-total="${rowTotal}">
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${formatearFechaDisplay(v.fecha)||''}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm font-medium text-gray-900 text-center">${v.id||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.nombre||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${Number(v.precio).toFixed(2)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.unidades}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${rowTotal.toFixed(2)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
+                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas||''}">${v.notas||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
+                    <button data-action="delete-history" data-fecha="${fechaSel}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
+                      <i class="fas fa-trash text-base"></i>
+                    </button>
+                  </td>
+                </tr>`;
+            }).join('');
+            // Re-attach delete handlers to new buttons
+            attachDeleteHandlers();
+            // Recalcular total del mes a partir de data
+            const monthTotalEl = group?.closest('[data-month-section]')?.querySelector('[data-month-total]');
+            if (monthTotalEl){
+              const ym = group?.closest('[data-month-section]')?.getAttribute('data-month');
+              if (ym){
+                const sumMes = Object.entries(data).filter(([f])=> f.startsWith(ym+'-'))
+                  .reduce((acc, [,lst])=> acc + lst.reduce((s,v)=> s + Number(v.total||0), 0), 0);
+                monthTotalEl.textContent = `Total del Mes: $${sumMes.toFixed(2)}`;
+              }
+            }
+          }catch(err){
+            console.error('refreshDia error', err);
+          }
+        }
+
+        function attachDeleteHandlers(){
+          contentEl.querySelectorAll('[data-action="delete-history"]').forEach(btn=>{
+            btn.addEventListener('click', async (e)=>{
+              e.stopPropagation();
+              const fechaSel = btn.getAttribute('data-fecha');
+              const idx = btn.getAttribute('data-index');
+              if (!fechaSel || idx===null) return;
+              const confirmado = await confirmarAccion({
+                titulo: '¿Eliminar registro?',
+                mensaje: 'Esta acción no se puede deshacer.',
+                confirmarTexto: 'Eliminar',
+                cancelarTexto: 'Cancelar'
+              });
+              if (!confirmado) return;
+              try{
+                const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method:'DELETE' });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.mensaje||data.error||'Error al eliminar');
+                const row = btn.closest('tr');
+                const rowTotal = parseFloat(row?.dataset?.total||'0');
+                // Animación suave y remover
+                if (row){
+                  row.classList.add('opacity-0','transition-opacity','duration-300');
+                  setTimeout(()=>{ row.remove(); }, 300);
+                }
+                if (typeof mostrarNotificacion === 'function') {
+                  mostrarNotificacion('✅ Registro eliminado', 'success');
+                }
+                // Refrescar solo ese día para reindexar y actualizar totales
+                await refreshDia(fechaSel);
+              }catch(err){
+                if (typeof mostrarNotificacion === 'function') {
+                  mostrarNotificacion('❌ '+ err.message, 'error');
+                } else {
+                  alert('Error: '+ err.message);
+                }
+              }
+            });
+          });
+        }
+
+        attachDeleteHandlers();
+      }
+
+      // Escuchar invalidación del historial (después de exportar)
+      window.addEventListener('historial:invalidate', function(){
+        histInvalidated = true;
+        if (!viewHist.classList.contains('hidden')){
+          renderHistorial();
+          histInvalidated = false;
+          histRendered = true;
+        }
+      });
+
+      // Estado inicial según query param
+      const params = new URLSearchParams(window.location.search);
+      const initial = params.get('view') === 'historial' ? 'historial' : 'ventas';
+      goto(initial);
+
+    })();
+    </script>
+
     <!-- Marca de agua fija: fondo inferior izquierdo, no se mueve con el scroll -->
     <div id="watermark" class="fixed bottom-4 left-4 w-72 pointer-events-none select-none z-10 transition-opacity duration-500" style="opacity: 0;">
         <img src="{{ url_for('static', filename='img/Agua.jpeg') }}" alt="Marca de agua" class="w-full h-auto">

@@ -80,26 +80,45 @@ def listar_ventas():
     return list(_ventas)
 
 def agregar_venta(data: dict):
-    """Agrega una venta SOLO a la memoria local, NO a Google Sheets automáticamente"""
+    """Agrega una venta solo a la memoria local (pendiente de exportar)."""
     venta = _normalizar_venta(data)
     _ventas.append(venta)
-    print(f"✅ Venta agregada a la memoria local (índice: {len(_ventas) - 1})")
     print(f"   NOTA: La venta NO se exportó a Google Sheets. Usa 'Exportar a Google Sheets' cuando estés listo.")
 
 def actualizar_venta(index: int, data: dict):
     if index < 0 or index >= len(_ventas):
         raise IndexError("Índice fuera de rango")
+    
+    venta_anterior = _ventas[index]
     venta = _normalizar_venta(data)
     _ventas[index] = venta
 
 def eliminar_venta(index: int):
     if index < 0 or index >= len(_ventas):
         raise IndexError("Índice fuera de rango")
+    
+    venta_eliminada = _ventas[index]
     _ventas.pop(index)
 
 def limpiar_ventas():
-    """Elimina todas las ventas en memoria"""
+    """Elimina todas las ventas en memoria (no toca historial)."""
     _ventas.clear()
+
+def cargar_ventas_desde_historial():
+    """Carga todas las ventas del historial persistente a la memoria al iniciar el servidor"""
+    from .history_service import leer_historial
+    try:
+        hist = leer_historial()
+        ventas_cargadas = 0
+        for fecha, ventas_dia in hist.items():
+            for venta in ventas_dia:
+                _ventas.append(venta)
+                ventas_cargadas += 1
+        print(f"✅ Cargadas {ventas_cargadas} ventas desde historial persistente")
+        return ventas_cargadas
+    except Exception as e:
+        print(f"⚠️ Error cargando ventas desde historial: {e}")
+        return 0
 
 def obtener_estado_sheets():
     """Obtiene el estado del Google Sheet"""
