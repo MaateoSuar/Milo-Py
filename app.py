@@ -3,6 +3,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from functools import wraps
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas, cargar_ventas_desde_historial
+from services.expenses_service import enviar_egresos, estado_egresos
 from services.history_service import leer_historial, agregar_ventas_a_historial, eliminar_historial_por_fecha_idx
 from services.catalog_service import obtener_catalogo, obtener_rangos
 from config import GOOGLE_SHEETS_CONFIG, GOOGLE_APPS_SCRIPT
@@ -84,6 +85,13 @@ def index():
 def historial():
     # Redirigir a la vista SPA en el index con la pestaña historial activa
     return redirect(url_for('index', view='historial'))
+
+# Nueva vista: Egresos
+@app.route("/egresos")
+@login_required
+def egresos_view():
+    # Redirigir a la vista SPA en el index con la pestaña egresos activa
+    return redirect(url_for('index', view='egresos'))
 
 # API de ventas (memoria)
 @app.route("/api/ventas", methods=["GET"])
@@ -239,6 +247,29 @@ def api_sheets_status():
         return jsonify(obtener_estado_sheets())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ===== Egresos (Apps Script) =====
+@app.route("/api/egresos", methods=["POST"])
+def api_egresos_post():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        if isinstance(data, list):
+            egresos = data
+        else:
+            # Aceptar un solo egreso o { egresos: [...] }
+            egresos = data.get("egresos") if isinstance(data.get("egresos"), list) else [data]
+        res = enviar_egresos(egresos)
+        code = 200 if res.get("success") else 400
+        return jsonify(res), code
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/egresos/status", methods=["GET"])
+def api_egresos_status():
+    try:
+        return jsonify(estado_egresos()), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Endpoint de verificación rápida
 @app.route("/test_sheets", methods=["GET"])

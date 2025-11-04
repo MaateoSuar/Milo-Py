@@ -55,6 +55,8 @@
             </div>
         </div>
 
+        
+
         <div class="space-y-6">
             <div class="secondary-bg p-4 rounded-lg">
                 <h3 class="text-sm font-medium secondary-text mb-1">Ventas Hoy</h3>
@@ -84,6 +86,83 @@
         <div class="mb-6 flex items-center gap-2">
             <a href="/" data-view="ventas" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold">Registrar Ventas</a>
             <a href="/historial" data-view="historial" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200">Historial de Ventas</a>
+            <a href="/egresos" data-view="egresos" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200">Egresos</a>
+        </div>
+        
+        <!-- VISTA: Egresos -->
+        <div id="view-egresos" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg md:text-xl font-semibold primary-text">Registro de Egresos</h2>
+                    </div>
+                    <form id="egresoForm" class="space-y-6 w-full max-w-none">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Fecha -->
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Fecha</label>
+                                <input type="date" id="eg_fecha" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" required>
+                            </div>
+                            <!-- Motivo del egreso -->
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Motivo del egreso</label>
+                                <input type="text" id="eg_motivo" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" placeholder="Motivo" required>
+                            </div>
+                            <!-- Costo -->
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Costo</label>
+                                <input type="number" step="0.01" min="0" id="eg_costo" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" placeholder="0.00" required>
+                            </div>
+                            
+                            <!-- Tipo -->
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Tipo</label>
+                                <select id="eg_tipo" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" required>
+                                    <option value="">Selecciona...</option>
+                                    <option value="Costo Fijo">Costo Fijo</option>
+                                    <option value="Costo Variable">Costo Variable</option>
+                                </select>
+                            </div>
+                            <!-- Forma de pago (radios) -->
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-2">Forma de pago</label>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <label class="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200">
+                                        <input type="radio" name="eg_pago" value="Efectivo" checked>
+                                        <span>Efectivo</span>
+                                        <i class="fas fa-money-bill-wave ml-auto text-green-500"></i>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200">
+                                        <input type="radio" name="eg_pago" value="Crédito">
+                                        <span>Crédito</span>
+                                        <i class="fas fa-credit-card ml-auto text-blue-500"></i>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200">
+                                        <input type="radio" name="eg_pago" value="Débito">
+                                        <span>Débito</span>
+                                        <i class="fas fa-credit-card ml-auto text-purple-500"></i>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 cursor-pointer hover:bg-gray-200">
+                                        <input type="radio" name="eg_pago" value="Transferencia">
+                                        <span>Transferencia</span>
+                                        <i class="fas fa-exchange-alt ml-auto text-blue-700"></i>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Observaciones -->
+                        <div>
+                            <label class="block text-sm font-medium primary-text mb-1">Observaciones</label>
+                            <textarea id="eg_obs" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" placeholder="Opcional"></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-6 py-2 btn-primary rounded-lg font-medium hover:bg-[#c9c1a8] btn-hover btn-active transition-all">
+                                <i class="fas fa-paper-plane mr-2"></i> Enviar egreso
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
         <!-- VISTA: Historial (SPA) -->
         <div id="view-historial" class="hidden">
@@ -332,8 +411,10 @@
     (function(){
       const linkVentas = document.querySelector('a[data-view="ventas"]');
       const linkHist = document.querySelector('a[data-view="historial"]');
+      const linkEgr = document.querySelector('a[data-view="egresos"]');
       const viewVentas = document.getElementById('view-ventas');
       const viewHist = document.getElementById('view-historial');
+      const viewEgr = document.getElementById('view-egresos');
       let histRendered = false;
       let histInvalidated = false;
 
@@ -343,16 +424,33 @@
           linkVentas.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkHist.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkEgr.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkEgr.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           viewVentas.classList.remove('hidden');
           viewHist.classList.add('hidden');
+          viewEgr.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.display = ''; }
-        } else {
+        } else if (view === 'historial') {
           linkHist.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkEgr.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkEgr.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           viewHist.classList.remove('hidden');
           viewVentas.classList.add('hidden');
+          viewEgr.classList.add('hidden');
+          const wm = document.getElementById('watermark');
+          if (wm) { wm.style.display = 'none'; }
+        } else if (view === 'egresos') {
+          linkEgr.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkHist.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          viewEgr.classList.remove('hidden');
+          viewVentas.classList.add('hidden');
+          viewHist.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.display = 'none'; }
         }
@@ -368,7 +466,7 @@
       }
 
       // Interceptar clicks
-      [linkVentas, linkHist].forEach(a => {
+      [linkVentas, linkHist, linkEgr].forEach(a => {
         if (!a) return;
         a.addEventListener('click', function(e){
           e.preventDefault();
@@ -710,6 +808,41 @@
       goto(initial);
 
     })();
+    </script>
+    <script>
+      // Egresos: handler de envío
+      (function(){
+        const form = document.getElementById('egresoForm');
+        if (!form) return;
+        const today = new Date().toISOString().split('T')[0];
+        const fecha = document.getElementById('eg_fecha');
+        if (fecha) fecha.value = today;
+        form.addEventListener('submit', async (e)=>{
+          e.preventDefault();
+          const payload = {
+            fecha: document.getElementById('eg_fecha').value,
+            motivo: document.getElementById('eg_motivo').value,
+            costo: parseFloat(document.getElementById('eg_costo').value || '0'),
+            
+            tipo: document.getElementById('eg_tipo').value,
+            pago: (document.querySelector('input[name="eg_pago"]:checked')||{}).value || 'Efectivo',
+            observaciones: document.getElementById('eg_obs').value,
+          };
+          try{
+            const res = await fetch('/api/egresos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (!res.ok || data.success === false) throw new Error(data.error || 'Error al registrar egreso');
+            if (typeof mostrarNotificacion === 'function') mostrarNotificacion('✅ Egreso registrado', 'success');
+            form.reset(); if (fecha) fecha.value = today;
+          }catch(err){ if (typeof mostrarNotificacion === 'function') mostrarNotificacion(`❌ ${err.message}`, 'error'); }
+        });
+        // Si la URL trae ?view=egresos activar esa vista al cargar
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('view') === 'egresos') {
+          const a = document.querySelector('a[data-view="egresos"]');
+          a && a.click();
+        }
+      })();
     </script>
 
     <!-- Marca de agua fija: fondo inferior izquierdo, no se mueve con el scroll -->

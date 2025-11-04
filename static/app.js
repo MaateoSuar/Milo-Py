@@ -490,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Invalidar/actualizar historial (SPA)
                     window.dispatchEvent(new Event('historial:invalidate'));
                     // Redirigir al historial para que el usuario valide la exportación
-                    setTimeout(() => { window.location.href = '/historial'; }, 300);
+                    
                 } else {
                     if (typeof mostrarNotificacion === 'function') {
                         mostrarNotificacion('❌ Falló la exportación', 'error');
