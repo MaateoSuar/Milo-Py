@@ -148,12 +148,16 @@ def api_exportar():
     """Exporta TODAS las ventas acumuladas en memoria a Google Sheets"""
     from services.sales_service import exportar_todas_las_ventas_a_sheets
     resultado = exportar_todas_las_ventas_a_sheets()
-    # Si la exportación fue exitosa, ahora SÍ persistimos en historial
+    # Si la exportación fue exitosa, persistimos SOLO lo realmente exportado y limpiamos memoria
     try:
         if resultado and resultado.get("success"):
             ventas_actuales = listar_ventas()
-            if ventas_actuales:
-                agregar_ventas_a_historial(ventas_actuales)
+            indices = resultado.get("indices_exitosos") or list(range(len(ventas_actuales)))
+            ventas_ok = [ventas_actuales[i] for i in indices if 0 <= i < len(ventas_actuales)]
+            if ventas_ok:
+                agregar_ventas_a_historial(ventas_ok)
+            # Limpiar ventas en memoria para empezar de nuevo
+            limpiar_ventas()
     except Exception:
         # No romper la respuesta original del endpoint
         pass
@@ -304,6 +308,6 @@ if __name__ == "__main__":
                 print("🗄️ Base de datos inicializada (Postgres)")
     except Exception as e:
         print(f"⚠️ No se pudo inicializar la base de datos: {e}")
-    ventas_cargadas = cargar_ventas_desde_historial()
-    print(f"📊 Sistema iniciado con {ventas_cargadas} ventas cargadas desde historial persistente")
+    # No cargar historial en memoria para evitar duplicados/saturación en la tabla de sesión
+    print("📊 Sistema iniciado (sin cargar historial en memoria)")
     app.run(debug=True)

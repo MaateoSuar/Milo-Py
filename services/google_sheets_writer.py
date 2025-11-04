@@ -468,16 +468,30 @@ class GoogleSheetsWriter:
                 ]
                 
                 # Escribir cada columna individualmente
+                wrote_A = False
+                wrote_E = False
                 for i, columna in enumerate(columnas_todas):
                     try:
                         self.worksheet.update(columna, [[datos_todas[i]]])  # Formato correcto: lista de listas
+                        # Marcar columnas críticas escritas
+                        if columna.startswith("A"):
+                            wrote_A = True
+                        if columna.startswith("E"):
+                            wrote_E = True
                     except Exception as col_error:
                         logger.warning(f"No se pudo escribir {columna}: {col_error}")
                         # Continuar con la siguiente columna
                         continue
                 
-                logger.info(f"✅ Fila {fila_destino} escrita exitosamente")
-                return True
+                # Considerar éxito SOLO si columnas críticas se escribieron
+                if wrote_A and wrote_E:
+                    logger.info(f"✅ Fila {fila_destino} escrita exitosamente")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Fila {fila_destino} incompleta (A/E no escritas). Reintentando...")
+                    if intento < max_reintentos - 1:
+                        continue
+                    return False
                 
             except gspread.exceptions.APIError as e:
                 error_msg = str(e).lower()
@@ -1109,11 +1123,13 @@ class GoogleSheetsWriter:
                     logger.info("🔒 Hoja protegida detectada: escribiendo fila por fila en columnas permitidas...")
                     ventas_exitosas = 0
                     errores = []
+                    indices_exitosos = []
                     for i, fila_datos in enumerate(filas_datos):
                         fila_actual = proxima_fila + i
                         try:
                             if self.escribir_fila_sin_expandir(fila_datos, fila_actual):
                                 ventas_exitosas += 1
+                                indices_exitosos.append(i)
                             else:
                                 errores.append(f"Fila {fila_actual}: no se pudo escribir")
                         except Exception as e2:
@@ -1131,6 +1147,7 @@ class GoogleSheetsWriter:
                         return {
                             "success": True,
                             "ventas_exportadas": ventas_exitosas,
+                            "indices_exitosos": indices_exitosos,
                             "mensaje": f"✅ {ventas_exitosas} ventas exportadas exitosamente a Google Sheets (hoja protegida)"
                         }
                     else:
@@ -1139,6 +1156,7 @@ class GoogleSheetsWriter:
                             "success": False,
                             "error": "EXPORT_PARTIAL",
                             "ventas_exportadas": ventas_exitosas,
+                            "indices_exitosos": indices_exitosos,
                             "errores": errores,
                             "mensaje": f"⚠️ {ventas_exitosas}/{len(ventas)} ventas exportadas. Algunas filas no se pudieron escribir por protección."
                         }
@@ -1156,6 +1174,29 @@ class GoogleSheetsWriter:
                     self.worksheet.update(range_name_1, data_1, value_input_option='USER_ENTERED')
                     self.worksheet.update(range_name_2, data_2, value_input_option='USER_ENTERED')
                     
+                    # Verificación defensiva: asegurar que la última fila quedó escrita
+                    try:
+                        check_rng = f"E{end}:E{end}"
+                        check_val = self.worksheet.get_values(check_rng)
+                        last_ok = bool(check_val and isinstance(check_val, list) and len(check_val) > 0 and len(check_val[0]) > 0 and str(check_val[0][0]).strip() != "")
+                        if not last_ok:
+                            logger.warning("Última fila no parece escrita. Reintentando última fila de forma individual...")
+                            # Reescribir última fila explícitamente
+                            last_idx = len(ventas) - 1
+                            fila_datos_last = filas_datos[last_idx]
+                            # A:C (1..3) y E:L (5..12)
+                            self.worksheet.update(f"A{end}:C{end}", [fila_datos_last[0:3]], value_input_option='USER_ENTERED')
+                            self.worksheet.update(f"E{end}:L{end}", [fila_datos_last[4:12]], value_input_option='USER_ENTERED')
+                            # Rechequear
+                            check_val2 = self.worksheet.get_values(check_rng)
+                            last_ok = bool(check_val2 and isinstance(check_val2, list) and len(check_val2) > 0 and len(check_val2[0]) > 0 and str(check_val2[0][0]).strip() != "")
+                            if not last_ok:
+                                logger.warning("No se pudo confirmar la última fila tras reintento.")
+                            else:
+                                logger.info("Última fila confirmada tras reintento.")
+                    except Exception as e_check:
+                        logger.warning(f"No se pudo verificar última fila: {e_check}")
+                    
                     logger.info(f"✅ {len(ventas)} ventas exportadas en lote (hoja sin protección)")
                     
                     # Guardar en CSV local
@@ -1168,6 +1209,7 @@ class GoogleSheetsWriter:
                     return {
                         "success": True,
                         "ventas_exportadas": len(ventas),
+                        "indices_exitosos": list(range(len(ventas))),
                         "mensaje": f"✅ {len(ventas)} ventas exportadas exitosamente a Google Sheets (MODO ULTRA RÁPIDO)"
                     }
                     
@@ -1177,12 +1219,14 @@ class GoogleSheetsWriter:
                 # Fallback al método tradicional si el rápido falla
                 ventas_exitosas = 0
                 errores = []
+                indices_exitosos = []
                 
                 for i, venta in enumerate(ventas):
                     try:
                         resultado = self.agregar_venta_a_sheets(venta)
                         if resultado["success"]:
                             ventas_exitosas += 1
+                            indices_exitosos.append(i)
                         else:
                             errores.append(f"Venta {i+1}: {resultado.get('error', 'Error desconocido')}")
                     except Exception as e2:
@@ -1192,12 +1236,15 @@ class GoogleSheetsWriter:
                     return {
                         "success": True,
                         "ventas_exportadas": ventas_exitosas,
+                        "indices_exitosos": indices_exitosos,
                         "mensaje": f"✅ {ventas_exitosas} ventas exportadas exitosamente a Google Sheets (método tradicional)"
                     }
                 else:
                     return {
                         "success": False,
                         "error": "EXPORT_FAILED",
+                        "ventas_exportadas": ventas_exitosas,
+                        "indices_exitosos": indices_exitosos,
                         "errores": errores,
                         "mensaje": f"⚠️ {ventas_exitosas}/{len(ventas)} ventas exportadas. {len(errores)} errores."
                     }

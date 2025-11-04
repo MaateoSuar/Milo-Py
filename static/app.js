@@ -460,8 +460,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    let isExporting = false;
     async function exportarExcel() {
         try {
+            if (isExporting) return; // evitar doble exportación
+            isExporting = true;
             exportBtn.disabled = true;
             exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Exportando...';
             
@@ -475,8 +478,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof mostrarNotificacion === 'function') {
                         mostrarNotificacion('✅ Exportación completada. Historial actualizado.', 'success');
                     }
+                    // Vaciar inmediatamente la tabla en UI
+                    ventasCache = [];
+                    actualizarTabla();
+                    actualizarEstadisticas();
+                    actualizarContador();
+                    // Forzar limpieza en backend por si hubo condiciones de carrera
+                    try { await fetch('/api/ventas', { method: 'DELETE' }); } catch (_) {}
+                    // Recargar ventas para reflejar limpieza
+                    try { await cargarVentas(); } catch (_) {}
                     // Invalidar/actualizar historial (SPA)
                     window.dispatchEvent(new Event('historial:invalidate'));
+                    // Redirigir al historial para que el usuario valide la exportación
+                    setTimeout(() => { window.location.href = '/historial'; }, 300);
                 } else {
                     if (typeof mostrarNotificacion === 'function') {
                         mostrarNotificacion('❌ Falló la exportación', 'error');
@@ -490,6 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             alert('ERROR AL EXPORTAR');
         } finally {
+            isExporting = false;
             exportBtn.disabled = false;
             exportBtn.innerHTML = '<i class="fas fa-file-excel mr-2"></i> Exportar a Google Sheets';
         }
@@ -504,9 +519,51 @@ document.addEventListener('DOMContentLoaded', () => {
         actualizarContador();
     }
 
+    // ======== Modal de límite de exportación ========
+    function cerrarModalLimit() {
+        const modal = document.getElementById('exportLimitModal');
+        if (modal) modal.remove();
+    }
+
+    function mostrarModalLimiteExport() {
+        // Evitar múltiples modales
+        if (document.getElementById('exportLimitModal')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'exportLimitModal';
+        overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40';
+
+        const box = document.createElement('div');
+        box.className = 'bg-white rounded-lg shadow-xl w-11/12 max-w-md p-6';
+        box.innerHTML = `
+            <h3 class="text-lg font-semibold mb-3">Límite alcanzado</h3>
+            <p class="text-sm text-gray-700 mb-5">Has alcanzado 20 artículos en la tabla. Para continuar, exporta las ventas actuales.</p>
+            <div class="flex justify-end gap-3">
+                <button id="btnCancelLimit" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button id="btnExportLimit" class="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700"><i class="fas fa-file-excel mr-2"></i>Exportar</button>
+            </div>
+        `;
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        document.getElementById('btnCancelLimit').addEventListener('click', cerrarModalLimit);
+        document.getElementById('btnExportLimit').addEventListener('click', async () => {
+            try {
+                cerrarModalLimit();
+                await exportarExcel();
+            } catch (_) {
+                // noop
+            }
+        });
+    }
+
     async function handleSubmit(event) {
         event.preventDefault(); // Evitar que el formulario se envíe de forma tradicional
         console.log('Intentando agregar/actualizar venta...');
+        // Límite de 20 artículos: no permitir agregar más -> abrir modal Exportar/Cancelar
+        if (editIndex === null && Array.isArray(ventasCache) && ventasCache.length >= 20) {
+            mostrarModalLimiteExport();
+            return;
+        }
         
         // Validar formulario
         if (!form.checkValidity()) {
@@ -941,25 +998,18 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('totalVentas').textContent = totalVentas;
     }
 
-    // ======== EXPORTAR =========
-    async function exportarExcel() {
-        try {
-            const res = await fetch('/api/exportar', { method: 'POST' });
-            const data = await res.json();
-            if (!res.ok || data?.success === false) {
-                const errMsg = data?.error || data?.mensaje || data?.message || 'Error al exportar';
-                throw new Error(errMsg);
-            }
-            // Mensaje fijo solicitado por el usuario
-            mostrarNotificacion('Exportado con Éxito', 'success');
-            downloadLink.classList.remove('hidden');
-        } catch (err) {
-            mostrarNotificacion(err.message || 'Error al exportar', 'error');
-        }
-    }
+    
     const watermark = document.getElementById('watermark');
     function updateWatermarkVisibility() {
         if (!watermark) return;
+        // Mostrar watermark SOLO en Registro de Venta (cuando existe la tarjeta del formulario)
+        const isRegistroVenta = !!document.getElementById('ventaFormCard');
+        if (!isRegistroVenta) {
+            watermark.style.opacity = '0';
+            watermark.style.display = 'none';
+            return;
+        }
+        watermark.style.display = '';
         const doc = document.documentElement;
         const atBottom = Math.ceil(window.innerHeight + window.scrollY) >= (doc.scrollHeight - 2);
         watermark.style.opacity = atBottom ? '0.3' : '0';

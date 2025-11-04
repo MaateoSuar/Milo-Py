@@ -142,8 +142,19 @@ def exportar_todas_las_ventas_a_sheets():
 
     try:
         writer = _get_sheets_writer()
-        print(f"🚀 Exportando {len(_ventas)} ventas...")
-        return writer.agregar_multiples_ventas_a_sheets(_ventas)
+        # Tomar snapshot inmutable para evitar desfasajes si se agregan ventas durante la exportación
+        ventas_snapshot = list(_ventas)
+        print(f"🚀 Exportando {len(ventas_snapshot)} ventas...")
+        resultado = writer.agregar_multiples_ventas_a_sheets(ventas_snapshot)
+        # Enriquecer respuesta con las ventas efectivamente exportadas
+        try:
+            indices = resultado.get("indices_exitosos") or list(range(len(ventas_snapshot)))
+            ventas_ok = [ventas_snapshot[i] for i in indices if 0 <= i < len(ventas_snapshot)]
+            resultado["ventas_exportadas_items"] = ventas_ok
+        except Exception:
+            # No romper si la respuesta no tiene indices
+            pass
+        return resultado
     except Exception as e:
         return {
             "success": False,
