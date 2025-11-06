@@ -450,6 +450,7 @@
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.display = ''; wm.style.opacity = '1'; }
         } else if (view === 'historial') {
+          linkHist && linkHist.classList.remove('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           linkHist && linkHist.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas && linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas && linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
@@ -464,6 +465,7 @@
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
         } else if (view === 'egresos') {
+          linkEgr && linkEgr.classList.remove('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           linkEgr && linkEgr.classList.add('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas && linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
           linkVentas && linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
@@ -478,6 +480,7 @@
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
         } else if (view === 'historial_egresos') {
+          linkEgrHist && linkEgrHist.classList.remove('bg-gray-100','text-gray-800','hover:bg-gray-200');
           linkEgrHist && linkEgrHist.classList.add('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkVentas && linkVentas.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkVentas && linkVentas.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
@@ -623,13 +626,41 @@
               const egresosDia = porFecha[d]||[];
               const dayTotal = egresosDia.reduce((acc,e)=>acc+(Number(e.costo)||0),0);
               dayList.innerHTML = `
-                <div class="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-50 border-b border-gray-200">
-                  <div class="text-sm md:text-base font-semibold primary-text">${formatearFechaDisplay(d)}</div>
+                <button class="w-full flex items-center justify-between px-3 md:px-4 py-2 text-left bg-gray-50 border-b border-gray-200" data-day-toggle>
+                  <div class="flex items-center gap-2 md:gap-3">
+                    <i class="fas fa-chevron-right text-gray-600" data-day-arrow></i>
+                    <div class="text-sm md:text-base font-semibold primary-text">${formatearFechaDisplay(d)}</div>
+                  </div>
                   <div class="text-xs md:text-sm text-gray-700 font-bold">Total Día: $${formatMoney(dayTotal)}</div>
+                </button>
+                <div class="hidden" data-day-content>
+                  <div class="px-3 md:px-4 py-2 grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 items-center primary-bg">
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Fecha</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Motivo</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Costo</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Tipo</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Pago</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Observaciones</div>
+                    <div class="text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider text-right">Acciones</div>
+                  </div>
+                  <div class="divide-y" data-day-rows></div>
                 </div>
-                <div class="divide-y" data-day-rows></div>
               `;
               const tbody = dayList.querySelector('[data-day-rows]');
+              const dayToggle = dayList.querySelector('[data-day-toggle]');
+              const dayContent = dayList.querySelector('[data-day-content]');
+              const dayArrow = dayList.querySelector('[data-day-arrow]');
+              if (dayArrow) dayArrow.classList.add('fa-chevron-right');
+              if (dayToggle && dayContent){
+                dayToggle.addEventListener('click', ()=>{
+                  const hidden = dayContent.classList.contains('hidden');
+                  dayContent.classList.toggle('hidden');
+                  if (dayArrow){
+                    dayArrow.classList.toggle('fa-chevron-right', !hidden);
+                    dayArrow.classList.toggle('fa-chevron-down', hidden);
+                  }
+                });
+              }
               egresosDia.forEach(e=>{
                 const row = document.createElement('div');
                 row.className = 'px-3 md:px-4 py-2 grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 items-center';
