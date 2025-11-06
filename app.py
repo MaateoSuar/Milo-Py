@@ -3,7 +3,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from functools import wraps
 from pathlib import Path
 from services.sales_service import listar_ventas, agregar_venta, actualizar_venta, eliminar_venta, obtener_estado_sheets, limpiar_ventas, cargar_ventas_desde_historial
-from services.expenses_service import enviar_egresos, estado_egresos
+from services.expenses_service import enviar_egresos, estado_egresos, listar_egresos
 from services.history_service import leer_historial, agregar_ventas_a_historial, eliminar_historial_por_fecha_idx
 from services.catalog_service import obtener_catalogo, obtener_rangos
 from config import GOOGLE_SHEETS_CONFIG, GOOGLE_APPS_SCRIPT
@@ -92,6 +92,12 @@ def historial():
 def egresos_view():
     # Redirigir a la vista SPA en el index con la pestaña egresos activa
     return redirect(url_for('index', view='egresos'))
+
+# Nueva vista: Historial de Egresos (SPA)
+@app.route("/egresos/historial")
+@login_required
+def egresos_historial_view():
+    return redirect(url_for('index', view='historial_egresos'))
 
 # API de ventas (memoria)
 @app.route("/api/ventas", methods=["GET"])
@@ -221,6 +227,63 @@ def api_exportar_prueba():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ===== Egresos: hard delete en DB =====
+@app.route("/api/egresos/<int:egreso_id>", methods=["DELETE"])
+def api_egresos_delete(egreso_id: int):
+    try:
+        try:
+            from services.db import get_session
+            from services.egresos_repository import eliminar_egreso_db
+        except (ImportError, ModuleNotFoundError):
+            return jsonify({"success": False, "error": "DB no configurada"}), 500
+
+        session = get_session()
+        try:
+            ok = eliminar_egreso_db(session, egreso_id)
+            if not ok:
+                session.rollback()
+                return jsonify({"success": False, "error": "EGRESO_NO_ENCONTRADO"}), 404
+            session.commit()
+            return jsonify({"success": True}), 200
+        finally:
+            session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# API: Historial de Egresos desde DB (formato simple de filas)
+@app.route("/api/egresos/historial_db", methods=["GET"])
+def api_egresos_historial_db():
+    try:
+        limit = int(request.args.get('limit', '200'))
+        try:
+            from services.db import get_session
+            from services.egresos_repository import listar_egresos_db
+        except (ImportError, ModuleNotFoundError):
+            # Sin SQLAlchemy/DB configurada: devolver vacío para que el front muestre estado vacío
+            return jsonify({"success": True, "rows": []}), 200
+
+        session = get_session()
+        try:
+            egresos = listar_egresos_db(session, limit=limit)
+        finally:
+            session.close()
+        # Responder en formato compatible con el front: rows = [ [fecha, motivo, costo, tipo, pago, observaciones, id], ... ]
+        rows = []
+        for e in egresos:
+            fecha_str = e.fecha.isoformat() if getattr(e, 'fecha', None) else ''
+            rows.append([
+                fecha_str,
+                getattr(e, 'motivo', '') or '',
+                float(getattr(e, 'costo', 0) or 0),
+                getattr(e, 'tipo', '') or '',
+                getattr(e, 'pago', '') or '',
+                getattr(e, 'observaciones', '') or '',
+                int(getattr(e, 'id', 0) or 0),
+            ])
+        return jsonify({"success": True, "rows": rows}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Redirigir a Google Sheets
 @app.route("/download/sheets", methods=["GET"])
 def download_sheets():
@@ -258,9 +321,41 @@ def api_egresos_post():
         else:
             # Aceptar un solo egreso o { egresos: [...] }
             egresos = data.get("egresos") if isinstance(data.get("egresos"), list) else [data]
-        res = enviar_egresos(egresos)
-        code = 200 if res.get("success") else 400
-        return jsonify(res), code
+        # Intentar guardar en DB primero (para no perder registros si GAS falla)
+        db_saved = False
+        db_rows = 0
+        db_error = None
+        try:
+            from services.db import get_session
+            from services.egresos_repository import guardar_egresos
+            session = get_session()
+            try:
+                db_rows = guardar_egresos(session, egresos)
+                session.commit()
+                db_saved = db_rows > 0
+            finally:
+                session.close()
+        except Exception as _db_err:
+            db_error = str(_db_err)
+
+        # Intentar exportar a GAS
+        gas_res = enviar_egresos(egresos)
+        gas_ok = bool(gas_res.get("success"))
+
+        # Consolidar respuesta: éxito si al menos una de las dos operaciones funcionó
+        success = gas_ok or db_saved
+        resp = {
+            "success": success,
+            "gas_saved": gas_ok,
+            "db_saved": db_saved,
+            "db_rows": db_rows,
+        }
+        if not gas_ok:
+            resp["gas_error"] = gas_res.get("error") or gas_res.get("message") or "GAS export failed"
+        if db_error:
+            resp["db_error"] = db_error
+
+        return jsonify(resp), (200 if success else 500)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -268,6 +363,17 @@ def api_egresos_post():
 def api_egresos_status():
     try:
         return jsonify(estado_egresos()), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# API: Historial de Egresos (lee desde Apps Script)
+@app.route("/api/egresos/historial", methods=["GET"])
+def api_egresos_historial():
+    try:
+        limit = int(request.args.get('limit', '200'))
+        res = listar_egresos(limit=limit)
+        code = 200 if res.get("success") else 400
+        return jsonify(res), code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

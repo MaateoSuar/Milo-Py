@@ -33,6 +33,7 @@ def init_db():
         return False
     engine = get_engine()
     # Importar modelos aquí para registrar metadata
-    from .models import Venta  # noqa: F401
+    from .models import Venta, Egreso  # noqa: F401
     Base.metadata.create_all(bind=engine)
     return True
+

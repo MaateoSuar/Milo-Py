@@ -83,3 +83,16 @@ def estado_egresos() -> Dict[str, Any]:
         return {"success": True, "estado": res}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def listar_egresos(limit: int = 200) -> Dict[str, Any]:
+    """Obtiene egresos desde Apps Script. Requiere que el GAS soporte action 'listEgresos'."""
+    try:
+        payload: Dict[str, Any] = {"action": "listEgresos", "sheetName": EGRESOS_SHEET_NAME, "limit": int(limit)}
+        if EGRESOS_SHEET_ID:
+            payload["sheetId"] = EGRESOS_SHEET_ID
+        res = _post_gas(payload)
+        # Se espera que el GAS devuelva { success: true, rows: [ [fecha, motivo, costo, tipo, pago, observaciones], ... ] }
+        return res if isinstance(res, dict) else {"success": True, "rows": res}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

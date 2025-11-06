@@ -1,0 +1,21 @@
+# Exclude local/ephemeral and heavy directories from Railway upload
+venv/
+.venv/
+ENV/
+.env/
+__pycache__/
+.cache/
+.mypy_cache/
+.pytest_cache/
+node_modules/
+dist/
+build/
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.sqlite
+*.sqlite3
+# Git and other vcs
+.git/
+.gitignore

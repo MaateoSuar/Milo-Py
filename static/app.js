@@ -124,6 +124,71 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${d}/${m}/${y}`;
     }
 
+    // Helper display de dinero es-AR
+    const _fmtMoney = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function formatMoney(n){ return _fmtMoney.format(Number(n)||0); }
+
+    // === Formato en-input con miles (puntos) y coma decimal ===
+    function formatThousandsEs(val) {
+        if (val == null) return '';
+        let s = String(val);
+        // Normalizar: permitir solo dígitos y coma como decimal
+        s = s.replace(/[^0-9,]/g, '');
+        const parts = s.split(',');
+        let ints = parts[0].replace(/\D/g, '');
+        let dec = parts.length > 1 ? parts.slice(1).join('').replace(/\D/g, '') : '';
+        // Formatear miles en parte entera
+        if (ints.length > 3) {
+            ints = ints.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+        return dec ? `${ints},${dec}` : ints;
+    }
+
+    function countDigits(str) {
+        let c = 0; for (let i=0;i<str.length;i++){ if (/\d/.test(str[i])) c++; } return c;
+    }
+    function setCaretByDigitIndex(input, digitIndex) {
+        const v = input.value;
+        if (!v) { input.setSelectionRange(0,0); return; }
+        let seen = 0;
+        let pos = v.length;
+        for (let i=0;i<v.length;i++){
+            if (/\d/.test(v[i])) { seen++; }
+            if (seen >= digitIndex) { pos = i+1; break; }
+        }
+        input.setSelectionRange(pos, pos);
+    }
+    function attachThousandsFormatter(input){
+        if (!input) return;
+        input.addEventListener('input', (e)=>{
+            const el = e.target;
+            const before = String(el.value);
+            const caret = el.selectionStart || 0;
+            const digitIdx = countDigits(before.slice(0, caret));
+            const formatted = formatThousandsEs(before);
+            if (formatted !== before){
+                el.value = formatted;
+                setCaretByDigitIndex(el, digitIdx);
+            }
+        });
+    }
+
+    // Parser para enviar/calcular: "12.345,67" -> 12345.67
+    function parseMoneyEs(text){
+        if (text == null) return NaN;
+        const s = String(text).replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+        const n = parseFloat(s);
+        return isNaN(n) ? NaN : n;
+    }
+
+    // Preview formateado (no altera el input)
+    const fmtPreview = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function toPreview(val){
+        const n = parseFloat(val);
+        if (isNaN(n)) return '';
+        return `$ ${fmtPreview.format(n)}`;
+    }
+
     // Eventos de pestañas
     tabVenta?.addEventListener('click', () => { isCambio = false; aplicarModo(); });
     tabCambio?.addEventListener('click', () => { isCambio = true; aplicarModo(); });
@@ -165,11 +230,11 @@ document.addEventListener('DOMContentLoaded', () => {
     exportBtn.addEventListener('click', exportarExcel);
 
     // Recalcular Precio Final en tiempo real si no fue editado manualmente
-    if (inputPrecio) inputPrecio.addEventListener('input', () => {
-        // Al editar Precio, dejamos de fijar Precio Final manualmente
-        precioFinalTouched = false;
-        recalcularPrecioFinalSiAuto();
-    });
+    // Formateo en vivo de miles dentro del input (Precio, Precio Final)
+    attachThousandsFormatter(inputPrecio);
+    if (inputPrecio){
+        inputPrecio.addEventListener('input', ()=>{ precioFinalTouched = false; recalcularPrecioFinalSiAuto(); });
+    }
     if (inputDescuento) inputDescuento.addEventListener('input', () => {
         // Clamp descuento a [0,100]
         if (typeof inputDescuento.value === 'string') {
@@ -198,20 +263,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Si no está fijado, recalcular el Precio Final a partir del Precio
         recalcularPrecioFinalSiAuto();
     });
-    if (inputPrecioFinal) inputPrecioFinal.addEventListener('input', () => {
-        // El usuario está fijando el Precio Final manualmente
-        precioFinalTouched = true;
-        const pf = parseFloat(inputPrecioFinal.value);
-        if (isNaN(pf) || !isFinite(pf)) return;
-        if (isCambio) {
-            // En Cambios, Precio Final = Precio
-            inputPrecio.value = pf.toFixed(2);
-            return;
-        }
-        const dPct = obtenerDescuentoPct();
-        const base = calcularPrecioDesdeFinal(pf, dPct);
-        if (!isNaN(base) && isFinite(base)) inputPrecio.value = base.toFixed(2);
-    });
+    attachThousandsFormatter(inputPrecioFinal);
+    if (inputPrecioFinal){
+        inputPrecioFinal.addEventListener('input', ()=>{
+            // Solo formatear el propio input; no sincronizar precio base para evitar saltos
+            precioFinalTouched = true;
+        });
+    }
+
+    const egCostoInput = document.getElementById('eg_costo');
+    if (egCostoInput){ attachThousandsFormatter(egCostoInput); }
 
     // Evento para el dropdown de IDs
     inputID.addEventListener('change', function() {
@@ -489,8 +550,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     try { await cargarVentas(); } catch (_) {}
                     // Invalidar/actualizar historial (SPA)
                     window.dispatchEvent(new Event('historial:invalidate'));
-                    // Redirigir al historial para que el usuario valide la exportación
-                    
+                    // Mostrar botón para abrir Google Sheets manualmente
+                    if (downloadLink) {
+                        downloadLink.href = '/download/sheets';
+                        downloadLink.classList.remove('hidden');
+                    }
                 } else {
                     if (typeof mostrarNotificacion === 'function') {
                         mostrarNotificacion('❌ Falló la exportación', 'error');
@@ -618,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let precio = parseFloat(precioValue);
+        let precio = parseMoneyEs(precioValue);
         let unidades = parseInt(unidadesValue);
         // Determinar precio unitario final a enviar: usar Precio Final si está, si no calcular a partir de descuento
         let precioFinalUnit = null;
@@ -632,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })();
 
         if (inputPrecioFinal && inputPrecioFinal.value !== '') {
-            const pf = parseFloat(inputPrecioFinal.value);
+            const pf = parseMoneyEs(inputPrecioFinal.value);
             if (!isNaN(pf) && isFinite(pf)) {
                 precioFinalUnit = pf;
             }
@@ -765,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ======== PRECIO FINAL: Cálculo automático ========
     function calcularPrecioFinalUnit() {
-        const precioVal = parseFloat(inputPrecio?.value || '');
+        const precioVal = parseMoneyEs(inputPrecio?.value || '');
         if (isNaN(precioVal) || !isFinite(precioVal)) return '';
         if (isCambio) return precioVal.toFixed(2);
         const dStr = inputDescuento?.value || '';
@@ -779,7 +843,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!inputPrecioFinal) return;
         if (precioFinalTouched) return; // respetar edición manual
         const val = calcularPrecioFinalUnit();
-        inputPrecioFinal.value = val;
+        if (val === '') { inputPrecioFinal.value = ''; return; }
+        // Pasar a coma decimal y miles con punto
+        const esVal = String(val).replace('.', ',');
+        inputPrecioFinal.value = formatThousandsEs(esVal);
     }
 
     // ======== Helpers para bidireccionalidad Precio <-> Precio Final ========
@@ -943,9 +1010,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${formatFechaDisplay(venta.fecha)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${venta.id}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700" title="${venta.nombre}">${venta.nombre || '-'}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">$${Number(venta.precio).toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">$${formatMoney(Number(venta.precio))}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${venta.unidades}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">$${Number(venta.total).toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">$${formatMoney(Number(venta.total))}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                         ${venta.pago === 'Efectivo' ? 'bg-green-100 text-green-800' :
@@ -969,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.appendChild(row);
         });
 
-        document.getElementById('totalGeneral').textContent = `$${totalGeneral.toFixed(2)}`;
+        document.getElementById('totalGeneral').textContent = `$${formatMoney(totalGeneral)}`;
 
         tbody.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -989,8 +1056,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const prom = cant > 0 ? ingresos / cant : 0;
 
         document.getElementById('ventasHoy').textContent = cant;
-        document.getElementById('ingresosTotales').textContent = `$${ingresos.toFixed(2)}`;
-        document.getElementById('promedioVenta').textContent = `$${prom.toFixed(2)}`;
+        document.getElementById('ingresosTotales').textContent = `$${formatMoney(ingresos)}`;
+        document.getElementById('promedioVenta').textContent = `$${formatMoney(prom)}`;
     }
 
     function actualizarContador() {

@@ -229,7 +229,7 @@ class GoogleSheetsWriter:
 
     def obtener_primer_fila_vacia_util(self):
         """Encuentra la primera fila vacía 'útil' desde arriba.
-        Considera vacía si A:C y E:L están vacías (D se ignora para no interferir con fórmulas).
+        Considera ocupada si CUALQUIER celda entre A y L tiene contenido.
         Devuelve número de fila (1-based). Si no hay huecos, retorna la siguiente al final confiable."""
         try:
             all_values = self.worksheet.get_all_values()
@@ -239,31 +239,30 @@ class GoogleSheetsWriter:
             for i, row in enumerate(all_values, start=1):
                 if i == 1:
                     continue  # headers
-                # A:C = indices 0..2, E:L = 4..11
+                # Considerar columnas A..L (índices 0..11). Si todas vacías => fila libre
                 def is_empty(cell):
                     if cell is None:
                         return True
                     s = str(cell).strip()
                     return s == ""
-                # A:C
-                ac_vacias = True
-                for c in range(0, min(3, len(row))):
-                    if not is_empty(row[c]):
-                        ac_vacias = False
-                        break
-                # E:L
-                el_vacias = True
-                for c in range(4, 12):
+                any_value = False
+                for c in range(0, 12):
                     if c < len(row) and not is_empty(row[c]):
-                        el_vacias = False
+                        any_value = True
                         break
-                if ac_vacias and el_vacias:
+                if not any_value:
                     return i
-            # Si no hay huecos, usar la siguiente al final confiable
-            return self.obtener_ultima_fila_confiable()
+            # Si no hay huecos internos, usar SIEMPRE la siguiente a la última fila con datos de get_all_values
+            # Esto evita reutilizar la última fila por efectos de formato/fórmulas
+            return max(len(all_values) + 1, self.obtener_ultima_fila_confiable())
         except Exception as e:
             logger.warning(f"Fallo en obtener_primer_fila_vacia_util: {e}")
-            return self.obtener_ultima_fila_confiable()
+            # Fallback conservador: usar la siguiente a la última fila visible
+            try:
+                all_values = self.worksheet.get_all_values()
+                return max(len(all_values) + 1, self.obtener_ultima_fila_confiable())
+            except Exception:
+                return self.obtener_ultima_fila_confiable()
     
     def asegurar_capacidad_hoja(self, filas_necesarias=1, columnas_necesarias=None):
         """
@@ -1098,8 +1097,8 @@ class GoogleSheetsWriter:
         try:
             logger.info(f"🚀 EXPORTACIÓN RÁPIDA: {len(ventas)} ventas a Google Sheets...")
             
-            # Obtener la próxima fila vacía
-            proxima_fila = self.obtener_ultima_fila_confiable()
+            # Obtener la próxima fila vacía de forma robusta (considera huecos y deja fila 1 para headers)
+            proxima_fila = self.obtener_primer_fila_vacia_util()
             
             # Preparar todas las filas de datos en una sola operación
             filas_datos = []
@@ -1108,7 +1107,7 @@ class GoogleSheetsWriter:
                 filas_datos.append(fila_datos)
             
             # Asegurar capacidad de la hoja
-            filas_necesarias = proxima_fila + len(ventas)
+            filas_necesarias = max(proxima_fila + len(ventas), proxima_fila + 1)
             if not self.asegurar_capacidad_hoja(filas_necesarias + 5):
                 logger.warning("No se pudo asegurar capacidad de la hoja, continuando...")
             
@@ -1165,8 +1164,8 @@ class GoogleSheetsWriter:
                     logger.info("🔄 Usando método ultra rápido para hoja sin protección...")
                     
                     # Escribir todas las filas de una vez usando dos rangos (A:C y E:L), evitando D
-                    start = proxima_fila
-                    end = proxima_fila + len(ventas) - 1
+                    start = max(2, proxima_fila)
+                    end = start + len(ventas) - 1
                     range_name_1 = f"A{start}:C{end}"
                     data_1 = [row[0:3] for row in filas_datos]
                     range_name_2 = f"E{start}:L{end}"
