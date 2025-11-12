@@ -1,10 +1,12 @@
 from datetime import datetime
+from threading import RLock
 from .google_sheets_writer import GoogleSheetsWriter
 from .apps_script_writer import AppsScriptWriter
 from config import GOOGLE_APPS_SCRIPT
 
 # Estructura en memoria
-_ventas = []  # lista de dicts: {fecha,id,nombre,precio,unidades,total,pago,notas}
+_ventas: list[dict] = []  # lista de dicts: {fecha,id,nombre,precio,unidades,total,pago,notas}
+_ventas_lock = RLock()
 
 # Instancia del escritor de Google Sheets (lazy)
 _sheets_writer = None
@@ -77,32 +79,33 @@ def _normalizar_venta(data: dict) -> dict:
     }
 
 def listar_ventas():
-    return list(_ventas)
+    with _ventas_lock:
+        return list(_ventas)
 
 def agregar_venta(data: dict):
     """Agrega una venta solo a la memoria local (pendiente de exportar)."""
     venta = _normalizar_venta(data)
-    _ventas.append(venta)
+    with _ventas_lock:
+        _ventas.append(venta)
     print(f"   NOTA: La venta NO se exportó a Google Sheets. Usa 'Exportar a Google Sheets' cuando estés listo.")
 
 def actualizar_venta(index: int, data: dict):
-    if index < 0 or index >= len(_ventas):
-        raise IndexError("Índice fuera de rango")
-    
-    venta_anterior = _ventas[index]
     venta = _normalizar_venta(data)
-    _ventas[index] = venta
+    with _ventas_lock:
+        if index < 0 or index >= len(_ventas):
+            raise IndexError("Índice fuera de rango")
+        _ventas[index] = venta
 
 def eliminar_venta(index: int):
-    if index < 0 or index >= len(_ventas):
-        raise IndexError("Índice fuera de rango")
-    
-    venta_eliminada = _ventas[index]
-    _ventas.pop(index)
+    with _ventas_lock:
+        if index < 0 or index >= len(_ventas):
+            raise IndexError("Índice fuera de rango")
+        _ventas.pop(index)
 
 def limpiar_ventas():
     """Elimina todas las ventas en memoria (no toca historial)."""
-    _ventas.clear()
+    with _ventas_lock:
+        _ventas.clear()
 
 def cargar_ventas_desde_historial():
     """Carga todas las ventas del historial persistente a la memoria al iniciar el servidor"""
@@ -112,7 +115,8 @@ def cargar_ventas_desde_historial():
         ventas_cargadas = 0
         for fecha, ventas_dia in hist.items():
             for venta in ventas_dia:
-                _ventas.append(venta)
+                with _ventas_lock:
+                    _ventas.append(venta)
                 ventas_cargadas += 1
         print(f"✅ Cargadas {ventas_cargadas} ventas desde historial persistente")
         return ventas_cargadas

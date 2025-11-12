@@ -905,10 +905,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             await cargarVentas();
+            currentDeleteIndex = null;
         });
         
         confirmCancelBtn.addEventListener('click', () => {
             confirmModal.classList.add('hidden');
+            currentDeleteIndex = null;
         });
     }
 
