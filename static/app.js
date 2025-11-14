@@ -1067,6 +1067,339 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('totalVentas').textContent = totalVentas;
     }
 
+    // ======== DASHBOARD ========
+    const dashState = {
+        picker: null,
+        start: null,
+        end: null,
+        charts: {}
+    };
+
+    function parseISODate(s){
+        try { return new Date(String(s).slice(0,10)); } catch(_) { return null; }
+    }
+
+    function inRange(d){
+        if (!d) return false;
+        if (dashState.start && d < dashState.start) return false;
+        if (dashState.end && d > dashState.end) return false;
+        return true;
+    }
+
+    async function cargarHistorial(){
+        const res = await fetch('/api/historial');
+        if (!res.ok) return {};
+        return await res.json();
+    }
+
+    function destroyCharts(){
+        Object.values(dashState.charts).forEach(ch => { try { ch && ch.destroy(); } catch(_){} });
+        dashState.charts = {};
+    }
+
+    function arColor(i){
+        // Paleta suave con marrones claros y tonos neutros de la app
+        const base = [
+            '#dbd4bb', // primary-bg
+            '#c7bcb5', // secondary-bg
+            '#e6dcc8',
+            '#d2c5b1',
+            '#bfae98',
+            '#a89278',
+            '#8f7b5e',
+            '#e8e2d3',
+            '#d7cdc0',
+            '#cabfae'
+        ];
+        return base[i % base.length];
+    }
+
+    // Paleta cualitativa contrastada pero armónica
+    function paletteQual(n){
+        const qual = [
+            '#8B5E34', // brown
+            '#C17F59', // light brown
+            '#A7C957', // olive green
+            '#3E8E7E', // teal
+            '#5B8FB9', // desaturated blue
+            '#E39A2F', // orange
+            '#D96B6B', // soft red
+            '#B779E2', // soft purple
+            '#84A59D', // sage
+            '#F28482', // coral
+            '#43AA8B', // green
+            '#F6BD60'  // sand
+        ];
+        const out = [];
+        for (let i=0;i<n;i++){ out.push(qual[i % qual.length]); }
+        return out;
+    }
+
+    // Helpers de colores por grupos (infinito y sin repetición perceptible)
+    const baseHueMap = {
+        'AN': 120, // green - Anillos
+        'A': 210,  // blue  - Aritos
+        'C': 30,   // orange/amber - Collar
+        'P': 20,   // orange - Pulsera
+        'G': 170,  // teal   - Gafas
+        'R': 280,  // purple - Ropa
+        'N': 40,   // sand   - Neceseres
+        'V': 50,   // sand/yellow - Varios
+        'OTROS': 0 // red fallback
+    };
+    function hslToHex(h, s, l){
+        s/=100; l/=100; const k=n=> (n+ h/30)%12; const a=s*Math.min(l,1-l);
+        const f=n=> l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n),1)));
+        const to = x => Math.round(255*x).toString(16).padStart(2,'0');
+        return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
+    }
+    function groupShades(hue, count, idx){
+        // Variar luminosidad y saturación de forma alternada para generar muchas escalas
+        const sat = 55 + (idx % 6) * 6;           // 55..85
+        const lum = 55 + ((Math.floor(idx/6)) % 6) * 6; // 55..85
+        return hslToHex(hue, Math.min(85, sat), Math.min(85, lum));
+    }
+    function groupedColors(labels, labelToPrefix){
+        // contar elementos por prefijo para asignar shades
+        const counts = {}; const indices = {};
+        labels.forEach(l=>{
+            const p = labelToPrefix[l] || 'OTROS';
+            counts[p] = (counts[p]||0)+1;
+        });
+        const colors = [];
+        labels.forEach(l=>{
+            const p = labelToPrefix[l] || 'OTROS';
+            const i = (indices[p]||0); indices[p]=i+1;
+            const hue = baseHueMap[p] ?? baseHueMap['OTROS'];
+            colors.push(groupShades(hue, counts[p], i));
+        });
+        return colors;
+    }
+
+    function adjustedDPR(){
+        try {
+            const z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+            return (window.devicePixelRatio || 1) / z;
+        } catch(_) { return window.devicePixelRatio || 1; }
+    }
+
+    async function renderDashboardInner(){
+        const elFact = document.getElementById('dashFacturacion');
+        const elCant = document.getElementById('dashCantidad');
+        const ctxLinea = document.getElementById('chartLinea');
+        const ctxPago = document.getElementById('chartPago');
+        const ctxTop = document.getElementById('chartTop');
+        const ctxBar = document.getElementById('chartBar');
+        if (!elFact || !elCant || !ctxLinea || !ctxPago || !ctxTop || !ctxBar) return;
+
+        const hist = await cargarHistorial(); // { 'YYYY-MM-DD': [ventas...] }
+
+        const timeline = []; // {fecha, total}
+        const porPago = {};  // pago -> total
+        const porProd = {};  // producto (nombre o id) -> total
+        const prodPrefix = {}; // label -> prefix derivado del ID
+        const porGrupo = {}; // grupo por prefijo de ID -> total
+        let facturacion = 0;
+        let cantidad = 0;
+
+        Object.entries(hist).forEach(([fecha, arr]) => {
+            const d = parseISODate(fecha);
+            if (!inRange(d)) return;
+            let totDia = 0;
+            arr.forEach(v => {
+                const total = Number(v.total != null ? v.total : (Number(v.precio||0) * Number(v.unidades||0)));
+                const unidades = Number(v.unidades||0);
+                facturacion += total;
+                cantidad += Math.max(0, unidades); // unidades vendidas (evitar negativos de cambios)
+                totDia += total;
+                const pagoKey = String(v.pago||'Otro');
+                porPago[pagoKey] = (porPago[pagoKey]||0) + total;
+                const prodKey = String(v.nombre||v.id||'Producto');
+                porProd[prodKey] = (porProd[prodKey]||0) + total;
+                const id = String(v.id||'').toUpperCase();
+                const m2 = id.match(/^([A-Z]+)/);
+                const pref2 = m2 ? m2[1] : 'OTROS';
+                prodPrefix[prodKey] = pref2;
+                // Agrupar por prefijo de ID (letras antes de dígitos)
+                const m = id.match(/^([A-Z]+)/);
+                const pref = m ? m[1] : 'OTROS';
+                // Mapeo a nombres amigables
+                const map = {
+                    'A': 'Aritos',
+                    'AN': 'Anillos',
+                    'C': 'Collar',
+                    'P': 'Pulsera',
+                    'G': 'Gafas',
+                    'N': 'Neceseres',
+                    'R': 'Ropa',
+                    'V': 'Varios'
+                };
+                const labelGrupo = map[pref] || pref;
+                porGrupo[labelGrupo] = (porGrupo[labelGrupo]||0) + total;
+            });
+            timeline.push({ fecha, total: totDia });
+        });
+
+        timeline.sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
+        elFact.textContent = `$ ${formatMoney(facturacion)}`;
+        elCant.textContent = `${cantidad}`;
+
+        destroyCharts();
+
+        // Line chart ganancias por día
+        // Registrar plugin crosshair una sola vez
+        if (!window.__chartCrosshairRegistered) {
+            try {
+                Chart.register({
+                    id: 'crosshair',
+                    afterDatasetsDraw(chart, args, opts){
+                        const tooltip = chart.tooltip;
+                        if (!tooltip || typeof tooltip.getActiveElements !== 'function') return;
+                        const active = tooltip.getActiveElements();
+                        if (!active || !active.length) return;
+                        const { chartArea, ctx } = chart;
+                        const x = active[0].element?.x;
+                        if (typeof x !== 'number') return;
+                        ctx.save();
+                        ctx.strokeStyle = (opts && opts.color) || 'rgba(90,83,67,0.35)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, chartArea.top);
+                        ctx.lineTo(x, chartArea.bottom);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                });
+                window.__chartCrosshairRegistered = true;
+            } catch(_) { /* noop */ }
+        }
+
+        dashState.charts.linea = new Chart(ctxLinea, {
+            type: 'line',
+            data: {
+                labels: timeline.map(x=>x.fecha),
+                datasets: [{
+                    label: 'Ingresos',
+                    data: timeline.map(x=>+x.total.toFixed(2)),
+                    borderColor: '#b2956b',
+                    backgroundColor: 'rgba(210, 197, 177, 0.35)',
+                    tension: 0.25,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHitRadius: 16,
+                    pointHoverBackgroundColor: '#5a5343',
+                    pointHoverBorderColor: '#ffffff',
+                    pointHoverBorderWidth: 2
+                }]
+            },
+            options: {
+                devicePixelRatio: adjustedDPR(),
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        displayColors: false,
+                        callbacks: {
+                            title: (items)=> items?.[0]?.label ? new Date(items[0].label+ 'T00:00:00').toLocaleDateString('es-AR') : '',
+                            label: (item)=> `Ingresos: $ ${formatMoney(item.parsed.y||0)}`
+                        }
+                    },
+                    crosshair: { color: 'rgba(90,83,67,0.35)' }
+                },
+                scales: { y: { ticks: { callback: v => v.toLocaleString('es-AR') } } }
+            }
+        });
+
+        // Doughnut por forma de pago
+        const pagoLabels = Object.keys(porPago);
+        const pagoData = pagoLabels.map(k=>+porPago[k].toFixed(2));
+        const pagoColors = paletteQual(pagoLabels.length);
+        dashState.charts.pago = new Chart(ctxPago, {
+            type: 'doughnut',
+            data: { labels: pagoLabels, datasets: [{ data: pagoData, backgroundColor: pagoColors, borderColor: '#ffffff', borderWidth: 1 }] },
+            options: { devicePixelRatio: adjustedDPR(), plugins: { legend: { position: 'right' } } }
+        });
+
+        // Top productos (sin límite: mostrar todos)
+        const prodEntries = Object.entries(porProd).sort((a,b)=>b[1]-a[1]);
+        const prodLabels = prodEntries.map(x=>x[0]);
+        const prodData = prodEntries.map(x=>+x[1].toFixed(2));
+        // Colores: agrupar por prefijo con escalas dentro de cada grupo
+        const prodColors = groupedColors(prodLabels, prodPrefix);
+        dashState.charts.top = new Chart(ctxTop, {
+            type: 'doughnut',
+            data: { labels: prodLabels, datasets: [{ data: prodData, backgroundColor: prodColors, borderColor: '#ffffff', borderWidth: 1 }] },
+            options: { devicePixelRatio: adjustedDPR(), plugins: { legend: { position: 'right' } } }
+        });
+
+        // Barras por tipo (grupo por prefijo de ID)
+        const grupoEntries = Object.entries(porGrupo).sort((a,b)=>b[1]-a[1]);
+        const grupoLabels = grupoEntries.map(x=>x[0]);
+        const grupoData = grupoEntries.map(x=>+x[1].toFixed(2));
+        const grupoColors = paletteQual(grupoLabels.length);
+        dashState.charts.bar = new Chart(ctxBar, {
+            type: 'bar',
+            data: { labels: grupoLabels, datasets: [{ label: 'Ventas $', data: grupoData, backgroundColor: grupoColors, borderColor: grupoColors.map(c=>c), borderWidth: 1 }] },
+            options: { devicePixelRatio: adjustedDPR(), plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v.toLocaleString('es-AR') } } } }
+        });
+    }
+
+    function initDashPicker(){
+        const btn = document.getElementById('dashRangeBtn');
+        const btnReset = document.getElementById('dashResetBtn');
+        if (!btn || dashState.picker) return;
+        try {
+            dashState.picker = new Litepicker({
+                element: btn,
+                singleMode: false,
+                numberOfMonths: 2,
+                numberOfColumns: 2,
+                autoApply: true,
+                format: 'YYYY-MM-DD',
+                tooltipText: { one: 'día', other: 'días' },
+                dropdowns: { minYear: 2024, maxYear: new Date().getFullYear() + 1, months: true, years: true }
+            });
+            dashState.picker.on('selected', (date1, date2) => {
+                dashState.start = date1 ? new Date(date1.format('YYYY-MM-DD')) : null;
+                dashState.end = date2 ? new Date(date2.format('YYYY-MM-DD')) : null;
+                btn.textContent = date1 && date2 ? `${date1.format('YYYY-MM-DD')} a ${date2.format('YYYY-MM-DD')}` : 'Selecciona un periodo';
+                renderDashboardInner();
+            });
+            // Establecer selección inicial si ya tenemos un rango
+            if (dashState.start && dashState.end) {
+                try { dashState.picker.setDateRange(dashState.start, dashState.end); } catch(_) {}
+                btn.textContent = `${dashState.start.toISOString().slice(0,10)} a ${dashState.end.toISOString().slice(0,10)}`;
+            }
+        } catch(_) { /* noop */ }
+        if (btnReset){
+            btnReset.addEventListener('click', ()=>{
+                if (dashState.picker) dashState.picker.clearSelection();
+                dashState.start = null; dashState.end = null;
+                btn.textContent = 'Selecciona un periodo';
+                renderDashboardInner();
+            });
+        }
+    }
+
+    // Exponer función para la SPA
+    window.renderDashboard = function(){
+        // Rango por defecto: último mes
+        if (!dashState.start || !dashState.end) {
+            const today = new Date();
+            const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const start = new Date(end);
+            start.setMonth(start.getMonth() - 1);
+            dashState.start = start;
+            dashState.end = end;
+        }
+        initDashPicker();
+        const btn = document.getElementById('dashRangeBtn');
+        if (btn) btn.textContent = `${dashState.start.toISOString().slice(0,10)} a ${dashState.end.toISOString().slice(0,10)}`;
+        renderDashboardInner();
+    }
+
     
     const watermark = document.getElementById('watermark');
     function updateWatermarkVisibility() {
