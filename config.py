@@ -57,7 +57,7 @@ def get_google_credentials():
 GOOGLE_SHEETS_CONFIG = {
     "SHEET_ID": os.getenv("GOOGLE_SHEETS_SHEET_ID", "1QG8a6yHmad5sFpVcKhC3l0oEAcjJftmHV2KAF56bkkM"),
     "SHEET_NAME": os.getenv("GOOGLE_SHEETS_SHEET_NAME", "Ingreso Diario"),
-    "CATALOG_GID": os.getenv("GOOGLE_SHEETS_CATALOG_GID", "180421919"),  # GID de la hoja "Códigos Stock" (catálogo)
+    "CATALOG_GID": os.getenv("GOOGLE_SHEETS_CATALOG_GID", "1664309383"),  # GID de la hoja "Códigos Stock" (catálogo)
     "TIMEOUT": int(os.getenv("GOOGLE_SHEETS_TIMEOUT", "10")),  # segundos
     "RETRY_ATTEMPTS": int(os.getenv("GOOGLE_SHEETS_RETRY_ATTEMPTS", "3")),
     "CREDENTIALS": get_google_credentials()
