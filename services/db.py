@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
@@ -33,7 +33,18 @@ def init_db():
         return False
     engine = get_engine()
     # Importar modelos aquí para registrar metadata
-    from .models import Venta, Egreso  # noqa: F401
+    from .models import Venta, Egreso, StockIngreso  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    # Pequeña migración segura: agregar columna costo_unitario si no existe
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE ventas "
+                    "ADD COLUMN IF NOT EXISTS costo_unitario numeric(12, 2)"
+                )
+            )
+    except Exception:
+        # No romper si la migración falla; el resto de la app puede seguir usando JSON
+        pass
     return True
-

@@ -337,9 +337,15 @@ class GoogleSheetsWriter:
             
             # Calcular precio total (precio unitario × unidades)
             precio_total = round(precio_unitario * venta["unidades"], 2)
-            
-            # Calcular margen (precio total - costo, asumiendo costo = 0 por ahora)
-            margen = precio_total
+
+            # Costo unitario (FIFO) si viene desde backend; si no, 0.0
+            try:
+                costo_unitario = float(venta.get("costo_unitario")) if venta.get("costo_unitario") is not None else 0.0
+            except Exception:
+                costo_unitario = 0.0
+
+            # Calcular margen = (precio_unitario - costo_unitario) * unidades
+            margen = round((precio_unitario - costo_unitario) * venta["unidades"], 2)
             
             # Formato de fecha para el sheet (DD/MM)
             fecha_obj = datetime.fromisoformat(venta["fecha"])
@@ -366,7 +372,7 @@ class GoogleSheetsWriter:
                 float(precio_total),                         # E: Precio (precio total = precio unitario × unidades)
                 int(venta["unidades"]),                     # F: Unidades (entero)
                 float(precio_unitario),                      # G: Precio Unitario (precio por unidad)
-                "Sin stock",                                # H: Costo U (por defecto)
+                float(costo_unitario),                       # H: Costo U (FIFO)
                 tipo_val,                                    # I: Tipo (derivado por ID)
                 venta["pago"],                              # J: Forma de pago
                 float(precio_total),                         # K: Costo Total (mismo que precio total)

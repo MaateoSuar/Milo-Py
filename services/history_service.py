@@ -9,9 +9,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 USE_DB = bool(DATABASE_URL)
 
 if USE_DB:
-    from sqlalchemy import select, delete, asc
+    from sqlalchemy import select, delete, asc, func
     from .db import get_session, init_db
-    from .models import Venta
+    from .models import Venta, StockIngreso
 
 # JSON fallback paths
 HIST_PATH = Path(__file__).resolve().parent.parent / 'data' / 'historial.json'
@@ -49,6 +49,7 @@ def _venta_to_dict(v: 'Venta') -> dict:
         "total": float(v.total),
         "pago": v.pago,
         "notas": v.notas or "",
+        "costo_unitario": float(v.costo_unitario) if getattr(v, "costo_unitario", None) is not None else 0.0,
     }
 
 
@@ -105,15 +106,32 @@ def agregar_ventas_a_historial(ventas: List[dict]) -> int:
                     f = (v.get('fecha') or '').strip()[:10]
                     if not f:
                         continue
+
+                    producto_id = str(v.get('id') or '').upper()
+                    nombre = str(v.get('nombre') or '')
+                    precio = float(v.get('precio') or 0)
+                    unidades = int(v.get('unidades') or 0)
+                    total = float(v.get('total') or (precio * unidades))
+                    pago = str(v.get('pago') or '')
+                    notas = str(v.get('notas') or '')
+
+                    # Tomar costo_unitario del payload si viene (calculado por FIFO en sales_service),
+                    # si no, dejar 0.0 como valor por defecto.
+                    try:
+                        costo_unitario_val = float(v.get('costo_unitario')) if 'costo_unitario' in v and v.get('costo_unitario') is not None else 0.0
+                    except Exception:
+                        costo_unitario_val = 0.0
+
                     venta = Venta(
                         fecha=datetime.fromisoformat(f).date(),
-                        producto_id=str(v.get('id') or '').upper(),
-                        nombre=str(v.get('nombre') or ''),
-                        precio=float(v.get('precio') or 0),
-                        unidades=int(v.get('unidades') or 0),
-                        total=float(v.get('total') or (float(v.get('precio') or 0) * int(v.get('unidades') or 0))),
-                        pago=str(v.get('pago') or ''),
-                        notas=str(v.get('notas') or ''),
+                        producto_id=producto_id,
+                        nombre=nombre,
+                        precio=precio,
+                        costo_unitario=costo_unitario_val,
+                        unidades=unidades,
+                        total=total,
+                        pago=pago,
+                        notas=notas,
                     )
                     session.add(venta)
                     added += 1
@@ -177,5 +195,103 @@ def eliminar_historial_por_fecha_idx(fecha: str, idx: int) -> bool:
         hist.pop(fecha, None)
     else:
         hist[fecha] = items
+    guardar_historial(hist)
+    return True
+
+
+def actualizar_historial_por_fecha_idx(fecha: str, idx: int, data: dict) -> bool:
+    """Actualiza una venta del historial por fecha e índice relativo (modo DB/JSON).
+
+    En modo DB, busca la venta por posición para esa fecha ordenando por
+    created_at/id (igual que eliminar_historial_por_fecha_idx) y actualiza
+    los campos básicos. En modo JSON, modifica directamente la estructura
+    en memoria.
+    """
+    if USE_DB:
+        try:
+            init_db()
+            session = get_session()
+            try:
+                fdate = datetime.fromisoformat(fecha[:10]).date()
+                rows = session.execute(
+                    select(Venta)
+                    .where(Venta.fecha == fdate)
+                    .order_by(asc(Venta.created_at), asc(Venta.id))
+                ).scalars().all()
+                if idx < 0 or idx >= len(rows):
+                    return False
+                v = rows[idx]
+
+                # Actualizar campos si vienen en el payload
+                new_fecha = (data.get('fecha') or '').strip()
+                if new_fecha:
+                    try:
+                        v.fecha = datetime.fromisoformat(new_fecha[:10]).date()
+                    except Exception:
+                        pass
+
+                if 'id' in data:
+                    v.producto_id = str(data.get('id') or '').upper()
+                if 'nombre' in data:
+                    v.nombre = str(data.get('nombre') or '')
+
+                if 'precio' in data:
+                    try:
+                        v.precio = float(data.get('precio') or 0)
+                    except Exception:
+                        pass
+                if 'unidades' in data:
+                    try:
+                        v.unidades = int(data.get('unidades') or 0)
+                    except Exception:
+                        pass
+
+                # Recalcular total si viene explícito o por precio*unidades
+                if 'total' in data:
+                    try:
+                        v.total = float(data.get('total') or 0)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        v.total = float(v.precio or 0) * int(v.unidades or 0)
+                    except Exception:
+                        pass
+
+                if 'pago' in data:
+                    v.pago = str(data.get('pago') or '')
+                if 'notas' in data:
+                    v.notas = str(data.get('notas') or '')
+
+                session.commit()
+                return True
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        except Exception as e:
+            print(f"⚠️ Error actualizando historial en DB, usando JSON fallback: {e}")
+
+    # JSON fallback
+    hist = leer_historial()
+    items = hist.get(fecha)
+    if not isinstance(items, list):
+        return False
+    if idx < 0 or idx >= len(items):
+        return False
+
+    current = items[idx]
+    if not isinstance(current, dict):
+        current = {}
+
+    merged = dict(current)
+    merged.update({
+        k: v
+        for k, v in data.items()
+        if k in {"fecha", "id", "nombre", "precio", "unidades", "total", "pago", "notas"}
+    })
+    items[idx] = merged
+    hist[fecha] = items
     guardar_historial(hist)
     return True

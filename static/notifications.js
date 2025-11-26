@@ -14,5 +14,5 @@ function mostrarNotificacion(mensaje, tipo) {
     setTimeout(() => {
         notificacion.classList.add('opacity-0', 'transition-opacity', 'duration-500');
         setTimeout(() => notificacion.remove(), 500);
-    }, 3000);
+    }, 7000);
 }

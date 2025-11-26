@@ -1,7 +1,794 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const today = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const today = `${yyyy}-${mm}-${dd}`;
     console.log('Setting today date:', today);
-    
+
+    // Diagnóstico manual: activar con ?debugDate=1
+    function runDateDiagnostics() {
+        const now = new Date();
+        const offsetMin = now.getTimezoneOffset();
+        const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const utcToday = new Date().toISOString().split('T')[0];
+
+        // Simulación de 22:30 locales del día actual
+        const sim = new Date(now);
+        sim.setHours(22, 30, 0, 0);
+        const simLocal = `${sim.getFullYear()}-${String(sim.getMonth() + 1).padStart(2, '0')}-${String(sim.getDate()).padStart(2, '0')}`;
+        const simUtc = sim.toISOString().split('T')[0];
+
+        console.group('[Fecha] Diagnóstico Local vs UTC');
+        console.log('Ahora (local):', now.toString());
+        console.log('Ahora (UTC ISO):', now.toISOString());
+        console.log('Timezone offset (min):', offsetMin);
+        console.log('Hoy (local):', localToday);
+        console.log('Hoy (UTC ISO->date):', utcToday);
+        if (localToday !== utcToday) {
+            console.warn('⚠ Diferencia detectada: localToday != utcToday');
+        }
+
+    // ======== STOCK INGRESO & STOCK ACTUAL =========
+    const stockIngresoForm = document.getElementById('stockIngresoForm');
+    const stFecha = document.getElementById('st_fecha');
+    const stIdArticulo = document.getElementById('st_id_articulo');
+    const stTipo = document.getElementById('st_tipo');
+    const stPrecioIndividual = document.getElementById('st_precio_individual');
+    const stCostoIndividual = document.getElementById('st_costo_individual');
+    const stCantidad = document.getElementById('st_cantidad');
+    const stCostoTotal = document.getElementById('st_costo_total');
+    const stNotas = document.getElementById('st_notas');
+    const stockIngresoBody = document.getElementById('stockIngresoBody');
+    const stockActualBody = document.getElementById('stockActualBody');
+
+    let stockEditId = null;
+
+    // Fecha por defecto: hoy
+    if (stockIngresoForm && stFecha && !stFecha.value) {
+        stFecha.value = today;
+    }
+
+    // Formateo y cálculo de costo total
+    if (stCostoIndividual) attachThousandsFormatter(stCostoIndividual);
+    if (stPrecioIndividual) attachThousandsFormatter(stPrecioIndividual);
+
+    function actualizarCostoTotalStock(){
+        if (!stCostoIndividual || !stCantidad || !stCostoTotal) return;
+        const costo = parseMoneyEs(stCostoIndividual.value || '');
+        const cant = parseInt(stCantidad.value || '0', 10) || 0;
+        if (!isFinite(costo) || cant <= 0){
+            stCostoTotal.value = '';
+            return;
+        }
+        const total = +(costo * cant).toFixed(2);
+        // Mostrar como texto plano con coma
+        let val = total.toFixed(2).replace('.', ',');
+        stCostoTotal.value = formatThousandsEs(val);
+    }
+
+    if (stCostoIndividual){
+        stCostoIndividual.addEventListener('input', actualizarCostoTotalStock);
+    }
+    if (stCantidad){
+        stCantidad.addEventListener('input', actualizarCostoTotalStock);
+    }
+
+    function resetStockIngresoForm(){
+        if (!stockIngresoForm) return;
+        stockIngresoForm.reset();
+        stockEditId = null;
+        if (stFecha) stFecha.value = today;
+    }
+
+    async function cargarStockIngresos(){
+        if (!stockIngresoBody) return;
+        try {
+            const res = await fetch('/api/stock/ingresos');
+            const data = await res.json();
+            if (!res.ok || data.success === false){
+                stockIngresoBody.innerHTML = '';
+                return;
+            }
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            stockIngresoBody.innerHTML = '';
+            if (!rows.length){
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="8" class="px-4 py-3 text-sm text-gray-500 text-center">No hay ingresos de stock registrados aún.</td>';
+                stockIngresoBody.appendChild(tr);
+                return;
+            }
+            rows.forEach((r) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                const costoInd = Number(r.costo_individual || 0);
+                const cant = Number(r.cantidad || 0);
+                const costoTot = Number(r.costo_total || (costoInd * cant));
+                const fechaDisp = formatFechaDisplay(r.fecha);
+                const notasTxt = r.notas || '';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${fechaDisp}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${r.id_articulo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${r.tipo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">$${formatMoney(costoInd)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">${cant}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold text-gray-900">$${formatMoney(costoTot)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-600 max-w-[8rem] md:max-w-xs truncate">
+                        ${notasTxt ? `<span class="truncate inline-block cursor-pointer" data-note="${encodeURIComponent(String(notasTxt))}" title="${notasTxt}">${notasTxt}</span>` : ''}
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right">
+                        <button type="button" class="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-blue-50 text-blue-600 hover:text-blue-800 mr-1" data-action="st-edit" data-id="${r.id}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-red-50 text-red-600 hover:text-red-800" data-action="st-delete" data-id="${r.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                `;
+                stockIngresoBody.appendChild(tr);
+            });
+        } catch(_){
+            // noop
+        }
+    }
+
+    async function guardarStockIngreso(e){
+        if (!stockIngresoForm) return;
+        e.preventDefault();
+        if (!stFecha || !stIdArticulo || !stCostoIndividual || !stCantidad) return;
+
+        const fecha = stFecha.value || today;
+        const id_articulo = (stIdArticulo.value || '').trim().toUpperCase();
+        const tipo = (stTipo?.value || '').trim();
+        const precio_individual = stPrecioIndividual ? parseMoneyEs(stPrecioIndividual.value || '') : NaN;
+        const costo_individual = parseMoneyEs(stCostoIndividual.value || '');
+        const cantidad = parseInt(stCantidad.value || '0', 10) || 0;
+        const notas = (stNotas?.value || '').trim();
+
+        if (!fecha || !id_articulo || !isFinite(costo_individual) || cantidad <= 0){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('❌ Completa fecha, ID, costo individual y cantidad (>0)', 'error');
+            }
+            return;
+        }
+
+        const costo_total_num = (() => {
+            const v = parseMoneyEs(stCostoTotal?.value || '');
+            if (isFinite(v) && v > 0) return v;
+            return +(costo_individual * cantidad).toFixed(2);
+        })();
+
+        const payload = {
+            fecha,
+            id_articulo,
+            tipo,
+            precio_individual: isFinite(precio_individual) ? precio_individual : null,
+            costo_individual,
+            cantidad,
+            costo_total: costo_total_num,
+            notas,
+        };
+
+        try {
+            const url = stockEditId != null ? `/api/stock/ingresos/${stockEditId}` : '/api/stock/ingresos';
+            const method = stockEditId != null ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false){
+                throw new Error(data.error || 'Error guardando ingreso de stock');
+            }
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('✅ Ingreso de stock guardado', 'success');
+            }
+            resetStockIngresoForm();
+            await cargarStockIngresos();
+        } catch(err){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion(`❌ ${err.message || err}`, 'error');
+            }
+        }
+    }
+
+    async function eliminarStockIngreso(id){
+        if (!id) return;
+        try {
+            const confirmado = await confirmarAccionJSON({
+                titulo: '¿Eliminar ingreso de stock?',
+                mensaje: 'Esta acción eliminará el ingreso de stock de la base de datos. No se puede deshacer.',
+                confirmarTexto: 'Eliminar',
+                cancelarTexto: 'Cancelar',
+            });
+            if (!confirmado) return;
+            const res = await fetch(`/api/stock/ingresos/${id}`, { method: 'DELETE' });
+            const data = await res.json().catch(()=>({}));
+            if (!res.ok || data.success === false){
+                throw new Error(data.error || 'Error al eliminar ingreso');
+            }
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('✅ Ingreso de stock eliminado', 'success');
+            }
+            await cargarStockIngresos();
+        } catch(err){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion(`❌ ${err.message || err}`, 'error');
+            }
+        }
+    }
+
+    function entrarEdicionStockIngreso(id){
+        if (!stockIngresoBody || !stockIngresoForm) return;
+        stockEditId = id;
+        // Buscar la fila en caché no existe, así que recargamos data desde tabla DOM
+        const btn = stockIngresoBody.querySelector(`[data-action="st-edit"][data-id="${id}"]`);
+        if (!btn) return;
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 6) return;
+        const fechaDisp = tds[0].textContent.trim();
+        const idArt = tds[1].textContent.trim();
+        const tipo = tds[2].textContent.trim();
+        const costoIndTxt = tds[3].textContent.replace(/[^0-9.,-]/g, '');
+        const cantTxt = tds[4].textContent.trim();
+        const notasSpan = tds[6].querySelector('[data-note]');
+        const notasRaw = notasSpan ? notasSpan.getAttribute('title') || '' : '';
+
+        // Parse fecha DD/MM/AAAA -> YYYY-MM-DD
+        let fechaISO = today;
+        const m = fechaDisp.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m){
+            fechaISO = `${m[3]}-${m[2]}-${m[1]}`;
+        }
+
+        if (stFecha) stFecha.value = fechaISO;
+        if (stIdArticulo) stIdArticulo.value = idArt;
+        if (stTipo) stTipo.value = tipo;
+        if (stCostoIndividual) stCostoIndividual.value = costoIndTxt;
+        if (stCantidad) stCantidad.value = cantTxt;
+        if (stNotas) stNotas.value = notasRaw;
+        actualizarCostoTotalStock();
+        if (stIdArticulo) stIdArticulo.focus();
+    }
+
+    if (stockIngresoForm){
+        if (stFecha && !stFecha.value) stFecha.value = today;
+        stockIngresoForm.addEventListener('submit', guardarStockIngreso);
+        // Delegación de acciones en la tabla
+        if (stockIngresoBody){
+            stockIngresoBody.addEventListener('click', (ev)=>{
+                const btn = ev.target.closest('button[data-action]');
+                if (!btn) return;
+                const id = Number(btn.getAttribute('data-id') || '0') || 0;
+                const action = btn.getAttribute('data-action');
+                if (action === 'st-edit'){
+                    entrarEdicionStockIngreso(id);
+                } else if (action === 'st-delete'){
+                    eliminarStockIngreso(id);
+                }
+            });
+        }
+    }
+
+    // STOCK ACTUAL
+    function getPuntoPedido(id){
+        try {
+            const raw = localStorage.getItem(`stock:reorder:${id}`);
+            if (!raw) return 0;
+            const n = parseInt(raw, 10);
+            return isNaN(n) ? 0 : n;
+        } catch(_){ return 0; }
+    }
+    function setPuntoPedido(id, val){
+        try {
+            const n = parseInt(val, 10);
+            if (!isNaN(n) && n >= 0){
+                localStorage.setItem(`stock:reorder:${id}`, String(n));
+            }
+        } catch(_){ /*noop*/ }
+    }
+
+    function calcularEstadoStock(cantidad, punto){
+        const q = Number(cantidad || 0);
+        const p = Number(punto || 0);
+        if (q <= 0) return 'AGOTADO';
+        if (q > 0 && q <= p) return 'NECESARIO';
+        return 'OK';
+    }
+
+    function estadoToBadge(estado){
+        if (estado === 'AGOTADO'){
+            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Agotado</span>';
+        }
+        if (estado === 'NECESARIO'){
+            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Necesario volver a comprar</span>';
+        }
+        return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">En stock</span>';
+    }
+
+    async function cargarStockActual(){
+        if (!stockActualBody) return;
+        try {
+            const res = await fetch('/api/stock/actual');
+            const data = await res.json();
+            if (!res.ok || data.success === false){
+                stockActualBody.innerHTML = '';
+                return;
+            }
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            stockActualBody.innerHTML = '';
+
+            // Mapear stock recibido por ID de artículo
+            const stockPorID = {};
+            rows.forEach((r)=>{
+                const id = r.id_articulo || '';
+                if (!id) return;
+                stockPorID[id] = r;
+            });
+
+            // Asegurar catálogo cargado si aún no existe
+            let idsCatalogo = productosPorID ? Object.keys(productosPorID) : [];
+            if (!idsCatalogo.length){
+                try {
+                    const resCat = await fetch('/api/catalogo');
+                    const dataCat = await resCat.json();
+                    if (resCat.ok && dataCat && typeof dataCat === 'object'){
+                        if (dataCat.productos_por_id && typeof dataCat.productos_por_id === 'object'){
+                            window.productosPorID = dataCat.productos_por_id;
+                        } else if (dataCat.catalogo && typeof dataCat.catalogo === 'object'){
+                            window.productosPorID = dataCat.catalogo;
+                        }
+                        // Sincronizar variable local
+                        productosPorID = window.productosPorID || {};
+                        idsCatalogo = Object.keys(productosPorID);
+                    }
+                } catch(_){/*noop*/}
+            }
+
+            if (!idsCatalogo.length && !rows.length){
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="7" class="px-4 py-3 text-sm text-gray-500 text-center">No hay datos de stock aún.</td>';
+                stockActualBody.appendChild(tr);
+                return;
+            }
+
+            const idsOrdenados = idsCatalogo.length ? idsCatalogo.slice().sort() : Object.keys(stockPorID).sort();
+
+            idsOrdenados.forEach((id)=>{
+                const infoStock = stockPorID[id] || {};
+                const prod = (productosPorID && productosPorID[id]) || {};
+                const nombre = prod.nombre || '';
+                const cantidad = Number(infoStock.cantidad_total || 0);
+                const costoProm = Number(infoStock.costo_promedio || 0);
+                const tipo = infoStock.tipo || (prod.tipo || '');
+                const punto = getPuntoPedido(id);
+                const estado = calcularEstadoStock(cantidad, punto);
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${id}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700" title="${nombre}">${nombre || '-'}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${tipo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">${cantidad}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">$${formatMoney(costoProm)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">
+                        <input type="number" min="0" step="1" value="${punto}" data-pp-id="${id}" class="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm" />
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-center">${estadoToBadge(estado)}</td>
+                `;
+                stockActualBody.appendChild(tr);
+            });
+
+            // Delegación para cambios de punto de pedido (escuchar todos los cambios)
+            stockActualBody.addEventListener('change', (ev)=>{
+                const input = ev.target.closest('input[data-pp-id]');
+                if (!input) return;
+                const id = input.getAttribute('data-pp-id');
+                const val = input.value;
+                setPuntoPedido(id, val);
+                // Recalcular estado solo de esa fila
+                const tr = input.closest('tr');
+                if (!tr) return;
+                const cantTd = tr.querySelectorAll('td')[3];
+                const estadoTd = tr.querySelectorAll('td')[6];
+                if (!cantTd || !estadoTd) return;
+                const cantidad = parseInt(cantTd.textContent.trim() || '0', 10) || 0;
+                const estado = calcularEstadoStock(cantidad, parseInt(val || '0', 10) || 0);
+                estadoTd.innerHTML = estadoToBadge(estado);
+            });
+        } catch(_){
+            // noop
+        }
+    }
+
+    // Exponer renderizadores para el SPA
+    try {
+        window.renderStockIngreso = async function(){
+            // Asegurar fecha por defecto al abrir la vista
+            if (stFecha && !stFecha.value) {
+                stFecha.value = today;
+            }
+            // Asegurar combo de IDs cargado cuando se abre la vista
+            llenarDropdownStockIDs();
+            await cargarStockIngresos();
+        };
+        window.renderStockActual = async function(){
+            // Asegurar que el catálogo está cargado (productosPorID)
+            await cargarStockActual();
+        };
+    } catch(_){/*noop*/}
+        console.log('--- Simulación 22:30 locales ---');
+        console.log('Sim (local):', sim.toString());
+        console.log('Sim (UTC ISO):', sim.toISOString());
+        console.log('Sim Hoy (local):', simLocal);
+        console.log('Sim Hoy (UTC ISO->date):', simUtc);
+        if (simLocal !== simUtc) {
+            console.warn('⚠ A las ~22:30, UTC y local pueden divergir. Con lógica local, usamos:', simLocal);
+        }
+        console.groupEnd();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('debugDate')) {
+        runDateDiagnostics();
+    }
+
+    // ======== STOCK INGRESO & STOCK ACTUAL (nivel principal) =========
+    const stockIngresoForm = document.getElementById('stockIngresoForm');
+    const stFecha = document.getElementById('st_fecha');
+    const stIdArticulo = document.getElementById('st_id_articulo');
+    const stTipo = document.getElementById('st_tipo');
+    const stPrecioIndividual = document.getElementById('st_precio_individual');
+    const stCostoIndividual = document.getElementById('st_costo_individual');
+    const stCantidad = document.getElementById('st_cantidad');
+    const stCostoTotal = document.getElementById('st_costo_total');
+    const stNotas = document.getElementById('st_notas');
+    const stockIngresoBody = document.getElementById('stockIngresoBody');
+    const stockActualBody = document.getElementById('stockActualBody');
+
+    let stockEditId = null;
+
+    // Fecha por defecto: hoy
+    if (stockIngresoForm && stFecha && !stFecha.value) {
+        stFecha.value = today;
+    }
+
+    // Formateo y cálculo de costo total
+    if (stCostoIndividual) attachThousandsFormatter(stCostoIndividual);
+    if (stPrecioIndividual) attachThousandsFormatter(stPrecioIndividual);
+
+    function actualizarCostoTotalStock(){
+        if (!stCostoIndividual || !stCantidad || !stCostoTotal) return;
+        const costo = parseMoneyEs(stCostoIndividual.value || '');
+        const cant = parseInt(stCantidad.value || '0', 10) || 0;
+        if (!isFinite(costo) || cant <= 0){
+            stCostoTotal.value = '';
+            return;
+        }
+        const total = +(costo * cant).toFixed(2);
+        let val = total.toFixed(2).replace('.', ',');
+        stCostoTotal.value = formatThousandsEs(val);
+    }
+
+    if (stCostoIndividual){
+        stCostoIndividual.addEventListener('input', actualizarCostoTotalStock);
+    }
+    if (stCantidad){
+        stCantidad.addEventListener('input', actualizarCostoTotalStock);
+    }
+
+    function resetStockIngresoForm(){
+        if (!stockIngresoForm) return;
+        stockIngresoForm.reset();
+        stockEditId = null;
+        if (stFecha) stFecha.value = today;
+    }
+
+    async function cargarStockIngresos(){
+        if (!stockIngresoBody) return;
+        try {
+            const res = await fetch('/api/stock/ingresos');
+            const data = await res.json();
+            if (!res.ok || data.success === false){
+                stockIngresoBody.innerHTML = '';
+                return;
+            }
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            stockIngresoBody.innerHTML = '';
+            if (!rows.length){
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="8" class="px-4 py-3 text-sm text-gray-500 text-center">No hay ingresos de stock registrados aún.</td>';
+                stockIngresoBody.appendChild(tr);
+                return;
+            }
+            rows.forEach((r) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                const costoInd = Number(r.costo_individual || 0);
+                const cant = Number(r.cantidad || 0);
+                const costoTot = Number(r.costo_total || (costoInd * cant));
+                const fechaDisp = formatFechaDisplay(r.fecha);
+                const notasTxt = r.notas || '';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${fechaDisp}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${r.id_articulo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${r.tipo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">$${formatMoney(costoInd)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">${cant}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold text-gray-900">$${formatMoney(costoTot)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-600 max-w-[8rem] md:max-w-xs truncate">
+                        ${notasTxt ? `<span class="truncate inline-block cursor-pointer" data-note="${encodeURIComponent(String(notasTxt))}" title="${notasTxt}">${notasTxt}</span>` : ''}
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right">
+                        <button type="button" class="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-blue-50 text-blue-600 hover:text-blue-800 mr-1" data-action="st-edit" data-id="${r.id}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-red-50 text-red-600 hover:text-red-800" data-action="st-delete" data-id="${r.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                `;
+                stockIngresoBody.appendChild(tr);
+            });
+        } catch(_){
+            // noop
+        }
+    }
+
+    async function guardarStockIngreso(e){
+        if (!stockIngresoForm) return;
+        e.preventDefault();
+        if (!stFecha || !stIdArticulo || !stCostoIndividual || !stCantidad) return;
+
+        const fecha = stFecha.value || today;
+        const id_articulo = (stIdArticulo.value || '').trim().toUpperCase();
+        const tipo = (stTipo?.value || '').trim();
+        const precio_individual = stPrecioIndividual ? parseMoneyEs(stPrecioIndividual.value || '') : NaN;
+        const costo_individual = parseMoneyEs(stCostoIndividual.value || '');
+        const cantidad = parseInt(stCantidad.value || '0', 10) || 0;
+        const notas = (stNotas?.value || '').trim();
+
+        if (!fecha || !id_articulo || !isFinite(costo_individual) || cantidad <= 0){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('❌ Completa fecha, ID, costo individual y cantidad (>0)', 'error');
+            }
+            return;
+        }
+
+        const costo_total_num = (() => {
+            const v = parseMoneyEs(stCostoTotal?.value || '');
+            if (isFinite(v) && v > 0) return v;
+            return +(costo_individual * cantidad).toFixed(2);
+        })();
+
+        const payload = {
+            fecha,
+            id_articulo,
+            tipo,
+            precio_individual: isFinite(precio_individual) ? precio_individual : null,
+            costo_individual,
+            cantidad,
+            costo_total: costo_total_num,
+            notas,
+        };
+
+        try {
+            const url = stockEditId != null ? `/api/stock/ingresos/${stockEditId}` : '/api/stock/ingresos';
+            const method = stockEditId != null ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false){
+                throw new Error(data.error || 'Error guardando ingreso de stock');
+            }
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('✅ Ingreso de stock guardado', 'success');
+            }
+            resetStockIngresoForm();
+            await cargarStockIngresos();
+        } catch(err){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion(`❌ ${err.message || err}`, 'error');
+            }
+        }
+    }
+
+    async function eliminarStockIngreso(id){
+        if (!id) return;
+        try {
+            const confirmado = await confirmarAccionJSON({
+                titulo: '¿Eliminar ingreso de stock?',
+                mensaje: 'Esta acción eliminará el ingreso de stock de la base de datos. No se puede deshacer.',
+                confirmarTexto: 'Eliminar',
+                cancelarTexto: 'Cancelar',
+            });
+            if (!confirmado) return;
+            const res = await fetch(`/api/stock/ingresos/${id}`, { method: 'DELETE' });
+            const data = await res.json().catch(()=>({}));
+            if (!res.ok || data.success === false){
+                throw new Error(data.error || 'Error al eliminar ingreso');
+            }
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion('✅ Ingreso de stock eliminado', 'success');
+            }
+            await cargarStockIngresos();
+        } catch(err){
+            if (typeof mostrarNotificacion === 'function'){
+                mostrarNotificacion(`❌ ${err.message || err}`, 'error');
+            }
+        }
+    }
+
+    function entrarEdicionStockIngreso(id){
+        if (!stockIngresoBody || !stockIngresoForm) return;
+        stockEditId = id;
+        const btn = stockIngresoBody.querySelector(`[data-action="st-edit"][data-id="${id}"]`);
+        if (!btn) return;
+        const tr = btn.closest('tr');
+        if (!tr) return;
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 6) return;
+        const fechaDisp = tds[0].textContent.trim();
+        const idArt = tds[1].textContent.trim();
+        const tipo = tds[2].textContent.trim();
+        const costoIndTxt = tds[3].textContent.replace(/[^0-9.,-]/g, '');
+        const cantTxt = tds[4].textContent.trim();
+        const notasSpan = tds[6].querySelector('[data-note]');
+        const notasRaw = notasSpan ? notasSpan.getAttribute('title') || '' : '';
+
+        let fechaISO = today;
+        const m = fechaDisp.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m){
+            fechaISO = `${m[3]}-${m[2]}-${m[1]}`;
+        }
+
+        if (stFecha) stFecha.value = fechaISO;
+        if (stIdArticulo) stIdArticulo.value = idArt;
+        if (stTipo) stTipo.value = tipo;
+        if (stCostoIndividual) stCostoIndividual.value = costoIndTxt;
+        if (stCantidad) stCantidad.value = cantTxt;
+        if (stNotas) stNotas.value = notasRaw;
+        actualizarCostoTotalStock();
+        if (stIdArticulo) stIdArticulo.focus();
+    }
+
+    if (stockIngresoForm){
+        if (stFecha && !stFecha.value) stFecha.value = today;
+        stockIngresoForm.addEventListener('submit', guardarStockIngreso);
+        if (stockIngresoBody){
+            stockIngresoBody.addEventListener('click', (ev)=>{
+                const btn = ev.target.closest('button[data-action]');
+                if (!btn) return;
+                const id = Number(btn.getAttribute('data-id') || '0') || 0;
+                const action = btn.getAttribute('data-action');
+                if (action === 'st-edit'){
+                    entrarEdicionStockIngreso(id);
+                } else if (action === 'st-delete'){
+                    eliminarStockIngreso(id);
+                }
+            });
+        }
+    }
+
+    // STOCK ACTUAL (nivel principal)
+    function getPuntoPedido(id){
+        try {
+            const raw = localStorage.getItem(`stock:reorder:${id}`);
+            if (!raw) return 0;
+            const n = parseInt(raw, 10);
+            return isNaN(n) ? 0 : n;
+        } catch(_){ return 0; }
+    }
+    function setPuntoPedido(id, val){
+        try {
+            const n = parseInt(val, 10);
+            if (!isNaN(n) && n >= 0){
+                localStorage.setItem(`stock:reorder:${id}`, String(n));
+            }
+        } catch(_){ /*noop*/ }
+    }
+
+    function calcularEstadoStock(cantidad, punto){
+        const q = Number(cantidad || 0);
+        const p = Number(punto || 0);
+        if (q <= 0) return 'AGOTADO';
+        if (q > 0 && q <= p) return 'NECESARIO';
+        return 'OK';
+    }
+
+    function estadoToBadge(estado){
+        if (estado === 'AGOTADO'){
+            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Agotado</span>';
+        }
+        if (estado === 'NECESARIO'){
+            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Necesario volver a comprar</span>';
+        }
+        return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">En stock</span>';
+    }
+
+    async function cargarStockActual(){
+        if (!stockActualBody) return;
+        try {
+            const res = await fetch('/api/stock/actual');
+            const data = await res.json();
+            if (!res.ok || data.success === false){
+                stockActualBody.innerHTML = '';
+                return;
+            }
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            stockActualBody.innerHTML = '';
+            if (!rows.length){
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="7" class="px-4 py-3 text-sm text-gray-500 text-center">No hay datos de stock aún.</td>';
+                stockActualBody.appendChild(tr);
+                return;
+            }
+
+            rows.forEach((r) => {
+                const id = r.id_articulo || '';
+                const prod = (productosPorID && productosPorID[id]) || {};
+                const nombre = prod.nombre || '';
+                const cantidad = Number(r.cantidad_total || 0);
+                const costoProm = Number(r.costo_promedio || 0);
+                const punto = getPuntoPedido(id);
+                const estado = calcularEstadoStock(cantidad, punto);
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${id}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700" title="${nombre}">${nombre || '-'}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${r.tipo || ''}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">${cantidad}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">$${formatMoney(costoProm)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700">
+                        <input type="number" min="0" step="1" value="${punto}" data-pp-id="${id}" class="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm" />
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-center">${estadoToBadge(estado)}</td>
+                `;
+                stockActualBody.appendChild(tr);
+            });
+
+            stockActualBody.addEventListener('change', (ev)=>{
+                const input = ev.target.closest('input[data-pp-id]');
+                if (!input) return;
+                const id = input.getAttribute('data-pp-id');
+                const val = input.value;
+                setPuntoPedido(id, val);
+                const tr = input.closest('tr');
+                if (!tr) return;
+                const cantTd = tr.querySelectorAll('td')[3];
+                const estadoTd = tr.querySelectorAll('td')[6];
+                if (!cantTd || !estadoTd) return;
+                const cantidad = parseInt(cantTd.textContent.trim() || '0', 10) || 0;
+                const estado = calcularEstadoStock(cantidad, parseInt(val || '0', 10) || 0);
+                estadoTd.innerHTML = estadoToBadge(estado);
+            }, { once: true });
+        } catch(_){
+            // noop
+        }
+    }
+
+    try {
+        window.renderStockIngreso = async function(){
+            if (stFecha && !stFecha.value) {
+                stFecha.value = today;
+            }
+            llenarDropdownStockIDs();
+            await cargarStockIngresos();
+        };
+        window.renderStockActual = async function(){
+            await cargarStockActual();
+        };
+    } catch(_){/*noop*/}
+
     // Variables globales
     let productosPorID = {}; 
     let editIndex = null;
@@ -11,7 +798,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ======== ELEMENTOS DOM =========
     const form = document.getElementById('ventaForm');
-    const inputID = document.getElementById('id');
+    const inputID = document.getElementById('id'); // oculto, se completa por lógica
+    const selectTipoProducto = document.getElementById('tipoProducto');
     const inputNombre = document.getElementById('nombre');
     const inputPrecio = document.getElementById('precio');
     const inputUnidades = document.getElementById('unidades');
@@ -34,6 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarClock = document.getElementById('sidebarClock');
     const sidebarClockDate = document.getElementById('sidebarClockDate');
     const sidebarClockTime = document.getElementById('sidebarClockTime');
+    const idAsignadoInfo = document.getElementById('idAsignadoInfo');
     // Tabs y tarjeta
     const tabVenta = document.getElementById('tabVenta');
     const tabCambio = document.getElementById('tabCambio');
@@ -223,6 +1012,29 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSidebarClock();
     setInterval(updateSidebarClock, 1000);
 
+    function resetForm() {
+        if (!form) return;
+        try {
+            form.reset();
+        } catch(_){}
+        if (fechaField) {
+            fechaField.value = today;
+        }
+        if (selectTipoProducto) {
+            selectTipoProducto.value = '';
+        }
+        if (inputID) inputID.value = '';
+        if (inputNombre) inputNombre.value = '';
+        if (inputDescuento) inputDescuento.value = '';
+        if (inputPrecioFinal) inputPrecioFinal.value = '';
+        if (inputPrecio) inputPrecio.value = '';
+        actualizarDisplayID('');
+        setHelper('Elegí un tipo y un precio para que el sistema asigne el ID automáticamente.', false);
+        isCambio = false;
+        precioFinalTouched = false;
+        aplicarModo();
+    }
+
     // ======== EVENTOS =========
     form.addEventListener('submit', handleSubmit);
     addBtn.addEventListener('click', handleSubmit);
@@ -233,7 +1045,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Formateo en vivo de miles dentro del input (Precio, Precio Final)
     attachThousandsFormatter(inputPrecio);
     if (inputPrecio){
-        inputPrecio.addEventListener('input', ()=>{ precioFinalTouched = false; recalcularPrecioFinalSiAuto(); });
+        inputPrecio.addEventListener('input', ()=>{
+            precioFinalTouched = false;
+            recalcularPrecioFinalSiAuto();
+            // Cada vez que cambia el precio, intentar asignar automáticamente el ID
+            asignarIDAUTOMATICO();
+        });
     }
     if (inputDescuento) inputDescuento.addEventListener('input', () => {
         // Clamp descuento a [0,100]
@@ -274,21 +1091,274 @@ document.addEventListener('DOMContentLoaded', () => {
     const egCostoInput = document.getElementById('eg_costo');
     if (egCostoInput){ attachThousandsFormatter(egCostoInput); }
 
-    // Evento para el dropdown de IDs
-    inputID.addEventListener('change', function() {
-        const selectedID = this.value;
-        if (selectedID && productosPorID[selectedID]) {
-            const productoSel = productosPorID[selectedID];
-            inputNombre.value = (productoSel && productoSel.nombre) ? productoSel.nombre : '';
-            setHelper(`✅ ID seleccionado: ${selectedID}`, true);
-            
-            // Focus en el siguiente campo (precio)
-            inputPrecio.focus();
-        } else {
-            inputNombre.value = '';
-            setHelper('Selecciona un ID válido del catálogo.', false);
+    // ======== ARQUEO DE CAJA (clon MwAccesorios) =========
+    const arqueoBtn = document.getElementById('arqueoBtn');
+    const arqueoPanel = document.getElementById('arqueoPanel');
+    const arqueoApertura = document.getElementById('arqueoApertura');
+    const arqueoCierre = document.getElementById('arqueoCierre');
+    const arqueoGuardar = document.getElementById('arqueoGuardar');
+    const arqueoCerrarPanel = document.getElementById('arqueoCerrarPanel');
+
+    function getArqueoKey(){
+        const f = fechaField?.value || new Date().toISOString().split('T')[0];
+        return `arqueo:${f}`;
+    }
+    function cargarArqueo(){
+        try {
+            const saved = localStorage.getItem(getArqueoKey());
+            if (saved){
+                const obj = JSON.parse(saved);
+                if (arqueoApertura) arqueoApertura.value = obj?.apertura ?? '';
+                if (arqueoCierre) arqueoCierre.value = obj?.cierre ?? '';
+            } else {
+                if (arqueoApertura) arqueoApertura.value = '';
+                if (arqueoCierre) arqueoCierre.value = '';
+            }
+        } catch(_){}
+    }
+    function updateArqueoCierreState(){
+        try {
+            const hayPendVentas = Array.isArray(ventasCache) && ventasCache.length > 0;
+            const hayPendientes = hayPendVentas;
+            if (arqueoCierre){
+                arqueoCierre.disabled = !!hayPendientes;
+                arqueoCierre.title = hayPendientes ? 'No se puede cargar el Cierre con ventas pendientes sin exportar' : '';
+                arqueoCierre.placeholder = hayPendientes ? 'Exporte primero' : '0.00';
+                if (hayPendientes) arqueoCierre.value = '';
+            }
+        } catch(_){}
+    }
+    if (arqueoBtn){
+        arqueoBtn.addEventListener('click', ()=>{
+            if (!arqueoPanel) return;
+            cargarArqueo();
+            arqueoPanel.classList.toggle('hidden');
+            updateArqueoCierreState();
+        });
+    }
+    if (arqueoCerrarPanel){
+        arqueoCerrarPanel.addEventListener('click', ()=> arqueoPanel?.classList.add('hidden'));
+    }
+    if (arqueoGuardar){
+        arqueoGuardar.addEventListener('click', async ()=>{
+            const apertura = parseFloat(arqueoApertura?.value || '');
+            const cierre = parseFloat(arqueoCierre?.value || '');
+
+            // Guardar solo apertura si no hay cierre informado aún
+            if (!isFinite(cierre)){
+                const payload = {
+                    apertura: isFinite(apertura) ? +apertura.toFixed(2) : null,
+                    cierre: null,
+                    savedAt: new Date().toISOString()
+                };
+                try {
+                    localStorage.setItem(getArqueoKey(), JSON.stringify(payload));
+                    if (typeof mostrarNotificacion === 'function'){
+                        mostrarNotificacion('✅ Apertura guardada', 'success');
+                    }
+                    arqueoPanel?.classList.add('hidden');
+                } catch(e){
+                    if (typeof mostrarNotificacion === 'function'){
+                        mostrarNotificacion('❌ No se pudo guardar la apertura', 'error');
+                    }
+                }
+                return;
+            }
+
+            // Calcular efectivo del día (solo ventas en efectivo) desde HISTORIAL
+            const fechaSel = fechaField?.value || new Date().toISOString().split('T')[0];
+            let efectivoDia = 0;
+            try {
+                const res = await fetch('/api/historial');
+                const hist = await res.json();
+                const ventasDia = Array.isArray(hist[fechaSel]) ? hist[fechaSel] : [];
+                efectivoDia = ventasDia
+                    .filter(v => (String(v.pago || '')).toLowerCase().includes('efect'))
+                    .reduce((sum, v)=>{
+                        const precio = Number(v.precio ?? 0);
+                        const unidades = Number(v.unidades ?? 0);
+                        const total = Number(v.total ?? (precio * unidades));
+                        return sum + (isFinite(total) ? total : 0);
+                    }, 0);
+            } catch(_) { efectivoDia = 0; }
+
+            const esperado = (isFinite(apertura) ? apertura : 0) + efectivoDia;
+            const cierreVal = isFinite(cierre) ? cierre : NaN;
+            const coincide = isFinite(cierreVal) && Math.abs(cierreVal - esperado) < 0.01;
+            if (!coincide){
+                const diff = isFinite(cierreVal) ? +(cierreVal - esperado).toFixed(2) : NaN;
+                const cierreTxt = isFinite(cierreVal) ? cierreVal.toFixed(2) : 'N/A';
+                const esperadoTxt = esperado.toFixed(2);
+                const diffTxt = isNaN(diff) ? 'N/A' : Math.abs(diff).toFixed(2);
+                const linea = `No coincide el cierre de caja | Cierre declarado $${cierreTxt} | Esperado $${esperadoTxt} | Diferencia $${diffTxt}`;
+                if (typeof mostrarNotificacion === 'function'){
+                    mostrarNotificacion(`❌ ${linea}`, 'error');
+                } else {
+                    alert(linea);
+                }
+                return;
+            }
+
+            const payload = {
+                apertura: isFinite(apertura) ? +apertura.toFixed(2) : null,
+                cierre: isFinite(cierre) ? +cierre.toFixed(2) : null,
+                savedAt: new Date().toISOString()
+            };
+            try {
+                localStorage.setItem(getArqueoKey(), JSON.stringify(payload));
+                if (typeof mostrarNotificacion === 'function'){
+                    mostrarNotificacion('✅ Arqueo guardado', 'success');
+                }
+                arqueoPanel?.classList.add('hidden');
+            } catch(e){
+                if (typeof mostrarNotificacion === 'function'){
+                    mostrarNotificacion('❌ No se pudo guardar el arqueo', 'error');
+                }
+            }
+        });
+    }
+
+    // Helpers para mapa de tipos y asignación automática de ID
+    let mapaTipoAGrupo = {};     // "Aritos" -> "A"
+    let mapaGrupoAIds = {};      // "A" -> ["A1","A2",...]
+
+    function construirMapeosTipoYGrupos(){
+        mapaTipoAGrupo = {};
+        mapaGrupoAIds = {};
+        if (!productosPorID || typeof productosPorID !== 'object') return;
+
+        const parseId = (id) => {
+            const m = String(id).toUpperCase().match(/^([A-Z]+)(\d+)$/);
+            return m ? { letters: m[1], number: parseInt(m[2], 10), raw: id } : null;
+        };
+
+        const normalizarTipo = (nombreRaw) => {
+            if (!nombreRaw) return '';
+            let n = String(nombreRaw).trim();
+            // Quitar textos como "Rango de precio 1", "Rango de precio 2", etc.
+            n = n.replace(/rango\s*de\s*precio\s*\d+/gi, '').trim();
+            // Quitar números sueltos al final
+            n = n.replace(/\d+$/g, '').trim();
+            return n;
+        };
+
+        Object.entries(productosPorID).forEach(([id, prod]) => {
+            const parsed = parseId(id);
+            if (!parsed) return;
+            const grupo = parsed.letters;
+            const nombreRaw = (prod && prod.nombre) ? String(prod.nombre).trim() : '';
+            const tipoBase = normalizarTipo(nombreRaw);
+            if (!tipoBase) return;
+
+            mapaGrupoAIds[grupo] = mapaGrupoAIds[grupo] || [];
+            mapaGrupoAIds[grupo].push(id);
+
+            // Asociar este tipo base con el grupo (Aritos -> A, Anillos -> AN, etc.)
+            if (!(tipoBase in mapaTipoAGrupo)){
+                mapaTipoAGrupo[tipoBase] = grupo;
+            }
+        });
+
+        // Ordenar IDs dentro de cada grupo de forma natural por número
+        Object.keys(mapaGrupoAIds).forEach(grupo => {
+            mapaGrupoAIds[grupo].sort((a,b)=>{
+                const pa = parseInt(String(a).match(/\d+/)?.[0] || '0',10);
+                const pb = parseInt(String(b).match(/\d+/)?.[0] || '0',10);
+                return pa - pb;
+            });
+        });
+    }
+
+    function llenarSelectTipos(){
+        const stTipoSelect = document.getElementById('st_tipo');
+        if (!selectTipoProducto && !stTipoSelect) return;
+
+        if (selectTipoProducto) {
+            selectTipoProducto.innerHTML = '<option value="">Selecciona un tipo...</option>';
         }
-    });
+        if (stTipoSelect && stTipoSelect.tagName === 'SELECT') {
+            stTipoSelect.innerHTML = '<option value="">Selecciona un tipo...</option>';
+        }
+
+        const tipos = Object.keys(mapaTipoAGrupo);
+        // Evitar duplicados accidentales y ordenar alfabéticamente
+        const tiposOrdenados = [...new Set(tipos)].sort((a,b)=> a.localeCompare(b, 'es'));
+        tiposOrdenados.forEach(tipo => {
+            if (selectTipoProducto) {
+                const opt = document.createElement('option');
+                opt.value = tipo;
+                opt.textContent = tipo;
+                selectTipoProducto.appendChild(opt);
+            }
+            if (stTipoSelect && stTipoSelect.tagName === 'SELECT') {
+                const opt2 = document.createElement('option');
+                opt2.value = tipo;
+                opt2.textContent = tipo;
+                stTipoSelect.appendChild(opt2);
+            }
+        });
+    }
+
+    function actualizarDisplayID(idCalculado){
+        if (!idAsignadoInfo) return;
+        const txt = idCalculado ? `ID asignado: ${idCalculado}` : 'ID asignado: -';
+        idAsignadoInfo.textContent = txt;
+    }
+
+    function asignarIDAUTOMATICO(){
+        if (!selectTipoProducto || !inputPrecio) return;
+        const tipoSel = selectTipoProducto.value || '';
+        const grupo = mapaTipoAGrupo[tipoSel];
+        if (!grupo){
+            inputID.value = '';
+            // No tocar el nombre; el usuario puede haber escrito algo manualmente
+            setHelper('Elegí un tipo de producto válido.', false);
+            actualizarDisplayID('');
+            return;
+        }
+        const idsGrupo = mapaGrupoAIds[grupo] || [];
+        const umbralesGrupo = rangosPrecios[grupo];
+        const precioNum = parseMoneyEs(inputPrecio.value || '');
+        if (!isFinite(precioNum) || precioNum <= 0 || !Array.isArray(umbralesGrupo) || !umbralesGrupo.length || !idsGrupo.length){
+            inputID.value = '';
+            // Mensaje informativo (no de error): mostrar en verde
+            setHelper('Ingresá un precio válido para asignar el ID automáticamente.', true);
+            actualizarDisplayID('');
+            return;
+        }
+
+        // Elegir índice de rango según umbrales crecientes
+        let idx = 0;
+        for (let i = 0; i < umbralesGrupo.length; i++){
+            if (precioNum > umbralesGrupo[i]){
+                idx = i;
+            } else {
+                break;
+            }
+        }
+        if (idx >= idsGrupo.length) idx = idsGrupo.length - 1;
+        const idAsignado = idsGrupo[idx];
+
+        inputID.value = idAsignado || '';
+        // Guardar como nombre básico el tipo general seleccionado, para que quede algo en la DB
+        if (inputNombre) {
+            inputNombre.value = tipoSel || '';
+        }
+
+        if (idAsignado){
+            setHelper(`✅ Tipo: ${tipoSel} → ID asignado: ${idAsignado}`, true);
+        } else {
+            setHelper('No se pudo asignar un ID con los datos actuales.', false);
+        }
+        actualizarDisplayID(idAsignado || '');
+    }
+
+    if (selectTipoProducto){
+        selectTipoProducto.addEventListener('change', ()=>{
+            // Al cambiar tipo, intentamos recalcular ID si ya hay precio
+            asignarIDAUTOMATICO();
+        });
+    }
 
     // ======== CARGA INICIAL =========
     console.log('Iniciando carga inicial...');
@@ -332,8 +1402,11 @@ document.addEventListener('DOMContentLoaded', () => {
             productosPorID = data;
             console.log('Catálogo cargado con éxito. Número de productos:', Object.keys(productosPorID).length);
 
-            // Llenar el dropdown de IDs
-            llenarDropdownIDs();
+            // Construir mapeos de tipos y grupos e inicializar select de tipos
+            construirMapeosTipoYGrupos();
+            llenarSelectTipos();
+            // Llenar también el combo de IDs de Stock ingreso si existe
+            try { llenarDropdownStockIDs(); } catch(_) {}
             
             return data; // Retornamos los datos para manejar la promesa
             
@@ -358,167 +1431,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function llenarDropdownIDs() {
-        try {
-            console.log('Llenando dropdown con productos...');
-            
-            // Limpiar opciones existentes (mantener la primera opción)
-            inputID.innerHTML = '<option value="">Selecciona un ID...</option>';
-            
-            // Verificar que hay productos
-            const ids = Object.keys(productosPorID);
-            if (ids.length === 0) {
-                console.warn('No hay productos para mostrar en el dropdown');
-                mostrarNotificacion('No se encontraron productos en el catálogo', 'warning');
-                return;
-            }
-            
-            // Ordenar los IDs de forma "natural": prefijo alfabético + número (A1, A2, ..., AN1)
-            const naturalKey = (id) => {
-                const m = String(id).toUpperCase().match(/^([A-Z]+)(\d+)$/);
-                if (m) {
-                    return { letters: m[1], number: parseInt(m[2], 10), raw: id };
-                }
-                // Fallback para IDs que no siguen el patrón
-                return { letters: String(id).toUpperCase(), number: Number.MAX_SAFE_INTEGER, raw: id };
-            };
+        // Ya no se usa para el formulario de ventas principal; se mantiene
+        // únicamente por compatibilidad si en el futuro se requiere.
+        // El nuevo flujo usa selectTipoProducto + asignarIDAUTOMATICO().
+        inputPrecio.placeholder = "Ingresa el precio";
+    }
 
-            const idsOrdenados = [...ids].sort((a, b) => {
-                const ka = naturalKey(a);
-                const kb = naturalKey(b);
-                if (ka.letters < kb.letters) return -1;
-                if (ka.letters > kb.letters) return 1;
-                if (ka.number < kb.number) return -1;
-                if (ka.number > kb.number) return 1;
-                // Si empatan, ordenar por valor crudo
-                return String(ka.raw).localeCompare(String(kb.raw));
-            });
-            
-            // Establecer un placeholder simple y fijo
-            inputPrecio.placeholder = "Ingresa el precio";
-            
-            // Agregar opciones de productos
-            idsOrdenados.forEach(id => {
-                try {
-                    const producto = productosPorID[id];
-                    const nombre = producto?.nombre || 'Sin nombre';
-                    
-                    const option = document.createElement('option');
-                    option.value = id;
-                    // Mostrar SOLO ID y nombre, sin precios ni textos extra
-                    option.textContent = `${id} - ${nombre}`;
-                    
-                    // Tooltip sin precio
-                    option.title = `ID: ${id}\nNombre: ${nombre}`;
-                    
-                    // No almacenar precio en dataset para evitar usos accidentales
-                    
-                    inputID.appendChild(option);
-                } catch (error) {
-                    console.error(`Error procesando producto con ID ${id}:`, error);
-                }
-            });
-            
-            console.log(`Dropdown llenado con ${idsOrdenados.length} productos`);
-            
-            // Configurar evento para actualizar el placeholder cuando se seleccione un ID
-            inputID.addEventListener('change', function() {
-                const selectedOption = this.options[this.selectedIndex];
-                if (selectedOption && selectedOption.value) {
-                    const producto = productosPorID[selectedOption.value];
-                    if (producto) {
-                        // Placeholder según rangos si existen
-                        const placeholderRango = calcularPlaceholderRango(selectedOption.value);
-                        inputPrecio.placeholder = placeholderRango || "Ingresa el precio";
-                        inputPrecio.value = ''; // Mantener el campo vacío siempre
-                        
-                        // Rellenar automáticamente el nombre
-                        inputNombre.value = producto.nombre || '';
-                        
-                        // Focus en el campo de precio
-                        inputPrecio.focus();
-                        
-                        setHelper(`✅ ID seleccionado: ${selectedOption.value}`, true);
-                    }
-                } else {
-                    // Restaurar el placeholder por defecto si no hay selección
-                    inputPrecio.placeholder = "Ingresa el precio";
-                    inputPrecio.value = '';
-                    inputNombre.value = '';
-                    setHelper('Selecciona un ID del catálogo', false);
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error al llenar el dropdown:', error);
-            mostrarNotificacion('Error al cargar la lista de productos', 'error');
-            
-            // Establecer un placeholder por defecto en caso de error
-            inputPrecio.placeholder = "Ingresa el precio";
+    // ======== STOCK: helpers de catálogo para combo de IDs ========
+    const stIdSelect = document.getElementById('st_id_articulo');
+    function llenarDropdownStockIDs() {
+        // Ya no se usa un combo de IDs en Stock ingreso; el ID se asigna automáticamente
+        // en el input st_id_articulo según tipo y precio.
+        return;
+    }
+
+    function asignarIDStockIngresoAutomatico() {
+        if (!stIdSelect || !stTipo || !stPrecioIndividual) return;
+        const tipoSelRaw = (stTipo.value || '').trim();
+        if (!tipoSelRaw) {
+            stIdSelect.value = '';
+            return;
         }
+
+        const tipoSel = tipoSelRaw;
+        const grupo = mapaTipoAGrupo[tipoSel] || null;
+        if (!grupo) {
+            stIdSelect.value = '';
+            return;
+        }
+
+        const idsGrupo = mapaGrupoAIds[grupo] || [];
+        const umbralesGrupo = rangosPrecios[grupo];
+        const precioNum = parseMoneyEs(stPrecioIndividual.value || '');
+        if (!isFinite(precioNum) || precioNum <= 0 || !Array.isArray(umbralesGrupo) || !umbralesGrupo.length || !idsGrupo.length) {
+            stIdSelect.value = '';
+            return;
+        }
+
+        let idx = 0;
+        for (let i = 0; i < umbralesGrupo.length; i++){
+            if (precioNum > umbralesGrupo[i]){
+                idx = i;
+            } else {
+                break;
+            }
+        }
+        if (idx >= idsGrupo.length) idx = idsGrupo.length - 1;
+        const idAsignado = idsGrupo[idx];
+        stIdSelect.value = idAsignado || '';
+    }
+
+    if (stTipo) {
+        stTipo.addEventListener('change', asignarIDStockIngresoAutomatico);
+    }
+    if (stPrecioIndividual) {
+        stPrecioIndividual.addEventListener('input', asignarIDStockIngresoAutomatico);
     }
 
     function calcularPlaceholderRango(idSeleccionado) {
-        // Rango por grupo: usar solo IDs con el mismo prefijo de letras
-        const parseId = (id) => {
-            const m = String(id).toUpperCase().match(/^([A-Z]+)(\d+)$/);
-            return m ? { letters: m[1], number: parseInt(m[2], 10), raw: id } : { letters: '', number: 0, raw: id };
-        };
-        const sel = parseId(idSeleccionado);
-        const umbralesGrupo = rangosPrecios[sel.letters];
-        if (!Array.isArray(umbralesGrupo) || umbralesGrupo.length < 2) {
-            // Sin rangos suficientes, no mostrar sugerencia
-            return '';
-        }
-        const options = Array.from(inputID.options).filter(o => o.value);
-        const grupoOptions = options.filter(o => parseId(o.value).letters === sel.letters);
-        const idsGrupo = grupoOptions.map(o => o.value);
-
-        // Índice dentro del grupo
-        const idx = idsGrupo.indexOf(idSeleccionado);
-        if (idx === -1) return '';
-
-        // Usar el índice del grupo para mapear umbrales del grupo
-        const lower = umbralesGrupo[Math.min(idx, umbralesGrupo.length - 1)] ?? 0;
-        const upper = umbralesGrupo[idx + 1];
-
-        const fmt = (n) => {
-            if (typeof n !== 'number' || isNaN(n)) return '-';
-            return `$${n.toLocaleString('es-CL')}`;
-        };
-
-        const left = fmt(lower);
-        const right = (typeof upper === 'number') ? fmt(upper) : '-';
-        return `Precio sugerido: ${left} a ${right}`;
+        // Función mantenida por compatibilidad; ya no se muestra el rango en el placeholder.
+        return '';
     }
 
     function setHelper(msg, ok) {
         const el = document.getElementById('idHelper');
         el.textContent = msg;
         el.className = `mt-1 text-xs ${ok ? 'text-green-600' : 'text-red-600'}`;
-    }
-
-    function resetForm() {
-        form.reset();
-        if (fechaField) {
-            fechaField.value = today;
-        }
-        inputNombre.value = '';
-        if (inputDescuento) inputDescuento.value = '';
-        if (inputPrecioFinal) inputPrecioFinal.value = '';
-        precioFinalTouched = false;
-        editIndex = null;
-        setHelper('Formulario limpiado. Selecciona un ID del catálogo.', true);
-        inputID.focus();
-        // Ajustar notas según modo actual
-        if (inputNotas) {
-            if (isCambio) {
-                inputNotas.value = NOTAS_PLACEHOLDER_CAMBIO;
-                inputNotas.placeholder = NOTAS_PLACEHOLDER_CAMBIO;
-            } else {
-                inputNotas.value = '';
-                inputNotas.placeholder = NOTAS_PLACEHOLDER_VENTA;
-            }
-        }
     }
 
     let isExporting = false;
@@ -871,6 +1849,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmDeleteBtn = document.getElementById('confirmDelete');
     const confirmCancelBtn = document.getElementById('confirmCancel');
     const clearAllBtn = document.getElementById('clearAllBtn');
+
+    // Modal de notas (UI simple con paleta actual)
+    const noteModal = document.getElementById('noteModal');
+    const noteModalBody = document.getElementById('noteModalBody');
+    const noteModalClose = document.getElementById('noteModalClose');
+    function openNoteModal(text){
+        if (!noteModal || !noteModalBody) return;
+        noteModalBody.textContent = text || '';
+        noteModal.classList.remove('hidden');
+    }
+    // Exponer global para que otros scripts (Historial Egresos / SPA) lo usen
+    try { window.openNoteModal = openNoteModal; } catch(_) {}
+    if (noteModalClose){ noteModalClose.addEventListener('click', ()=> noteModal.classList.add('hidden')); }
+    if (noteModal){
+        noteModal.addEventListener('click', (e)=>{ if (e.target === noteModal) noteModal.classList.add('hidden'); });
+    }
+    // Delegación global: cualquier elemento con data-note abre el modal
+    document.addEventListener('click', (e)=>{
+        const holder = e.target.closest('[data-note]');
+        if (!holder) return;
+        const note = holder.getAttribute('data-note') || '';
+        try {
+            const txt = decodeURIComponent(note);
+            openNoteModal(txt);
+        } catch(_) {
+            openNoteModal(note);
+        }
+    }, { passive: true });
 
     // Configurar eventos del modal
     if (confirmDeleteBtn && confirmCancelBtn) {

@@ -348,7 +348,13 @@
                                 <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${rowTotal.toFixed(2)}</td>
                                 <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
                                 <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas || ''}">${v.notas || '-'}</td>
-                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
+                                <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle space-x-1">
+                                    <button data-action="edit-history" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-blue-50 text-blue-600 hover:text-blue-800 transition" title="Editar">
+                                        <i class="fas fa-edit text-base"></i>
+                                    </button>
+                                    <button data-action="download-remito" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-800 transition" title="Descargar remito">
+                                        <i class="fas fa-file-pdf text-base"></i>
+                                    </button>
                                     <button data-action="delete-history" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
                                         <i class="fas fa-trash text-base"></i>
                                     </button>
@@ -362,68 +368,154 @@
         contentEl.innerHTML = tableHtml;
         contentEl.dataset.rendered = '1';
 
-        // Adjuntar handlers de eliminación ahora que la tabla existe
-        contentEl.querySelectorAll('[data-action="delete-history"]').forEach(btn => {
+        // Adjuntar handlers de acciones ahora que la tabla existe
+        contentEl.querySelectorAll('[data-action]').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
+                const action = btn.getAttribute('data-action');
                 const fechaSel = btn.getAttribute('data-fecha');
                 const idx = btn.getAttribute('data-index');
                 if (!fechaSel || idx === null) return;
-                const confirmado = await confirmarAccionHistorial({
-                    titulo: '¿Eliminar registro? ',
-                    mensaje: 'Esta acción no se puede deshacer.',
-                    confirmarTexto: 'Eliminar',
-                    cancelarTexto: 'Cancelar'
-                });
-                if (!confirmado) return;
-                try {
-                    const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method: 'DELETE' });
-                    const data = await res.json();
-                    if (!res.ok || !data.success) {
-                        throw new Error(data.mensaje || data.error || 'Error al eliminar');
+
+                if (action === 'download-remito') {
+                    // Abrir remito en nueva pestaña/ventana
+                    const url = `/remito/${fechaSel}/${idx}`;
+                    try {
+                        window.open(url, '_blank');
+                    } catch(_) {
+                        window.location.href = url;
                     }
+                    return;
+                }
+
+                if (action === 'edit-history') {
+                    // Tomar datos de la fila para edición rápida
                     const row = btn.closest('tr');
-                    const rowTotal = parseFloat(row?.dataset?.total || '0');
-                    row?.remove();
-                    const group = monthSection.querySelector(`[data-content][data-fecha="${fechaSel}"]`)?.closest('[data-content]')?.parentElement;
-                    const countEl = group ? group.querySelector('[data-count]') : null;
-                    if (countEl) {
-                        const match = countEl.textContent.match(/\((\d+)/);
-                        const current = match ? parseInt(match[1]) : ventas.length;
-                        const next = Math.max(0, current - 1);
-                        countEl.textContent = `(${next} ventas)`;
+                    if (!row) return;
+                    const celdas = row.querySelectorAll('td');
+                    if (celdas.length < 8) return;
+
+                    const fechaTexto = celdas[0].textContent.trim();
+                    const idTexto = celdas[1].textContent.trim();
+                    const nombreTexto = celdas[2].textContent.trim();
+                    const precioTexto = celdas[3].textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
+                    const unidadesTexto = celdas[4].textContent.trim();
+                    const pagoTexto = celdas[6].textContent.trim();
+                    const notasTexto = celdas[7].getAttribute('title') || celdas[7].textContent.trim();
+
+                    // Convertir fecha DD/MM/AAAA -> YYYY-MM-DD
+                    let fechaISO = fechaSel;
+                    const m = fechaTexto.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+                    if (m) {
+                        fechaISO = `${m[3]}-${m[2]}-${m[1]}`;
                     }
-                    const totalEl = group ? group.querySelector('[data-total]') : null;
-                    if (totalEl) {
-                        const currentText = totalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
-                        const current = parseFloat(currentText) || totalDia;
-                        const next = Math.max(0, +(current - rowTotal).toFixed(2));
-                        totalEl.textContent = `Total día: $${next.toFixed(2)}`;
+
+                    const nuevoId = window.prompt('Editar ID de producto', idTexto) ?? null;
+                    if (nuevoId === null) return;
+                    const nuevoNombre = window.prompt('Editar nombre', nombreTexto) ?? null;
+                    if (nuevoNombre === null) return;
+                    const nuevoPrecioStr = window.prompt('Editar precio unitario', precioTexto || '0') ?? null;
+                    if (nuevoPrecioStr === null) return;
+                    const nuevoUnidadesStr = window.prompt('Editar unidades', unidadesTexto || '1') ?? null;
+                    if (nuevoUnidadesStr === null) return;
+                    const nuevoPago = window.prompt('Editar forma de pago', pagoTexto || '') ?? null;
+                    if (nuevoPago === null) return;
+                    const nuevoNotas = window.prompt('Editar notas', notasTexto || '') ?? '';
+
+                    const precioNum = parseFloat(String(nuevoPrecioStr).replace(',', '.')) || 0;
+                    const unidadesNum = parseInt(String(nuevoUnidadesStr), 10) || 0;
+                    const totalNum = +(precioNum * unidadesNum).toFixed(2);
+
+                    try {
+                        const res = await fetch(`/api/historial/${fechaSel}/${idx}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                fecha: fechaISO,
+                                id: nuevoId,
+                                nombre: nuevoNombre,
+                                precio: precioNum,
+                                unidades: unidadesNum,
+                                total: totalNum,
+                                pago: nuevoPago,
+                                notas: nuevoNotas,
+                            }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.mensaje || data.error || 'Error al actualizar');
+                        }
+                        if (typeof mostrarNotificacion === 'function') {
+                            mostrarNotificacion('✅ Venta actualizada', 'success');
+                        }
+                        setTimeout(()=>{ try { window.location.reload(); } catch(_){} }, 200);
+                    } catch (err) {
+                        if (typeof mostrarNotificacion === 'function') {
+                            mostrarNotificacion('❌ ' + err.message, 'error');
+                        } else {
+                            alert('Error: ' + err.message);
+                        }
                     }
-                    // Actualizar total del mes
-                    const monthTotalEl = monthSection.querySelector('[data-month-total]');
-                    if (monthTotalEl) {
-                        const currentText = monthTotalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
-                        const currentMonth = parseFloat(currentText) || 0;
-                        const nextMonth = Math.max(0, +(currentMonth - rowTotal).toFixed(2));
-                        monthTotalEl.textContent = `Total del Mes: $${nextMonth.toFixed(2)}`;
-                    }
-                    const tbody = contentEl.querySelector('tbody');
-                    if (tbody && tbody.children.length === 0) {
-                        // Si el día quedó vacío, removemos el grupo entero
-                        const groupContainer = contentEl.closest('.border');
-                        groupContainer?.remove();
-                    }
-                    if (typeof mostrarNotificacion === 'function') {
-                        mostrarNotificacion('✅ Registro eliminado', 'success');
-                    }
-                    // Refrescar la página para re-sincronizar índices y habilitar múltiples eliminaciones
-                    setTimeout(()=>{ try { window.location.reload(); } catch(_){} }, 200);
-                } catch (err) {
-                    if (typeof mostrarNotificacion === 'function') {
-                        mostrarNotificacion('❌ ' + err.message, 'error');
-                    } else {
-                        alert('Error: ' + err.message);
+                    return;
+                }
+
+                if (action === 'delete-history') {
+                    const confirmado = await confirmarAccionHistorial({
+                        titulo: '¿Eliminar registro? ',
+                        mensaje: 'Esta acción no se puede deshacer.',
+                        confirmarTexto: 'Eliminar',
+                        cancelarTexto: 'Cancelar'
+                    });
+                    if (!confirmado) return;
+                    try {
+                        const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.mensaje || data.error || 'Error al eliminar');
+                        }
+                        const row = btn.closest('tr');
+                        const rowTotal = parseFloat(row?.dataset?.total || '0');
+                        row?.remove();
+                        const group = monthSection.querySelector(`[data-content][data-fecha="${fechaSel}"]`)?.closest('[data-content]')?.parentElement;
+                        const countEl = group ? group.querySelector('[data-count]') : null;
+                        if (countEl) {
+                            const match = countEl.textContent.match(/\((\d+)/);
+                            const current = match ? parseInt(match[1]) : ventas.length;
+                            const next = Math.max(0, current - 1);
+                            countEl.textContent = `(${next} ventas)`;
+                        }
+                        const totalEl = group ? group.querySelector('[data-total]') : null;
+                        if (totalEl) {
+                            const currentText = totalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
+                            const current = parseFloat(currentText) || totalDia;
+                            const next = Math.max(0, +(current - rowTotal).toFixed(2));
+                            totalEl.textContent = `Total día: $${next.toFixed(2)}`;
+                        }
+                        // Actualizar total del mes
+                        const monthTotalEl = monthSection.querySelector('[data-month-total]');
+                        if (monthTotalEl) {
+                            const currentText = monthTotalEl.textContent.replace(/[^0-9.,-]/g, '').replace(',', '.');
+                            const currentMonth = parseFloat(currentText) || 0;
+                            const nextMonth = Math.max(0, +(currentMonth - rowTotal).toFixed(2));
+                            monthTotalEl.textContent = `Total del Mes: $${nextMonth.toFixed(2)}`;
+                        }
+                        const tbody = contentEl.querySelector('tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            // Si el día quedó vacío, removemos el grupo entero
+                            const groupContainer = contentEl.closest('.border');
+                            groupContainer?.remove();
+                        }
+                        if (typeof mostrarNotificacion === 'function') {
+                            mostrarNotificacion('✅ Registro eliminado', 'success');
+                        }
+                        // Refrescar la página para re-sincronizar índices y habilitar múltiples eliminaciones
+                        setTimeout(()=>{ try { window.location.reload(); } catch(_){} }, 200);
+                    } catch (err) {
+                        if (typeof mostrarNotificacion === 'function') {
+                            mostrarNotificacion('❌ ' + err.message, 'error');
+                        } else {
+                            alert('Error: ' + err.message);
+                        }
                     }
                 }
             });

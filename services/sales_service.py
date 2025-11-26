@@ -4,6 +4,16 @@ from .google_sheets_writer import GoogleSheetsWriter
 from .apps_script_writer import AppsScriptWriter
 from config import GOOGLE_APPS_SCRIPT
 
+try:
+    # Importar helpers de DB solo si están disponibles (modo Railway/Postgres)
+    from .db import get_session
+    from .models import StockIngreso, Venta
+    from sqlalchemy import select, asc
+except Exception:  # pragma: no cover - entorno sin DB
+    get_session = None
+    StockIngreso = None
+    Venta = None
+
 # Estructura en memoria
 _ventas: list[dict] = []  # lista de dicts: {fecha,id,nombre,precio,unidades,total,pago,notas}
 _ventas_lock = RLock()
@@ -149,6 +159,95 @@ def exportar_todas_las_ventas_a_sheets():
         # Tomar snapshot inmutable para evitar desfasajes si se agregan ventas durante la exportación
         ventas_snapshot = list(_ventas)
         print(f"🚀 Exportando {len(ventas_snapshot)} ventas...")
+
+        # Si hay DB disponible, calcular costo_unitario por FIFO/PEPS para cada venta del snapshot
+        if get_session is not None and StockIngreso is not None and Venta is not None:
+            session = get_session()
+            try:
+                # Pre-cargar ventas ya persistidas para simular consumo FIFO correcto.
+                # Solo consideramos las ventas que ya tienen costo_unitario definido,
+                # para mantener el mismo criterio que usa el endpoint de stock_actual.
+                ventas_existentes = session.execute(
+                    select(Venta)
+                    .where(Venta.costo_unitario.isnot(None))
+                    .order_by(asc(Venta.fecha), asc(Venta.created_at), asc(Venta.id))
+                ).scalars().all()
+
+                # Construir un mapa producto_id -> lista de partidas de stock (orden FIFO)
+                partidas_por_id = {}
+                filas_stock = session.execute(
+                    select(StockIngreso)
+                    .order_by(asc(StockIngreso.fecha), asc(StockIngreso.id))
+                ).scalars().all()
+                for ing in filas_stock:
+                    pid = (ing.id_articulo or "").upper()
+                    if not pid:
+                        continue
+                    partidas_por_id.setdefault(pid, []).append({
+                        "restante": int(ing.cantidad or 0),
+                        "costo_u": float(ing.costo_individual or 0),
+                    })
+
+                # Función interna para consumir unidades FIFO de un ID dado
+                def _consumir_fifo(pid: str, unidades: int) -> float:
+                    if unidades <= 0:
+                        return 0.0
+                    pid = (pid or "").upper()
+                    if not pid:
+                        return 0.0
+                    partidas = partidas_por_id.get(pid) or []
+                    if not partidas:
+                        return 0.0
+
+                    unidades_pendientes = unidades
+                    costo_acumulado = 0.0
+                    unidades_tomadas = 0
+
+                    for p in partidas:
+                        disp = int(p.get("restante", 0) or 0)
+                        if disp <= 0:
+                            continue
+                        tomar = min(disp, unidades_pendientes)
+                        if tomar <= 0:
+                            continue
+                        costo_u = float(p.get("costo_u", 0) or 0)
+                        costo_acumulado += costo_u * tomar
+                        unidades_tomadas += tomar
+                        p["restante"] = disp - tomar
+                        unidades_pendientes -= tomar
+                        if unidades_pendientes <= 0:
+                            break
+
+                    if unidades_tomadas <= 0:
+                        return 0.0
+                    return float(costo_acumulado / unidades_tomadas)
+
+                # Primero, simular las ventas YA persistidas para consumir stock antiguo
+                for v in ventas_existentes:
+                    pid = (v.producto_id or "").upper()
+                    unidades = int(v.unidades or 0)
+                    if unidades <= 0:
+                        continue
+                    # Si ya tiene costo_unitario definido, consumimos el stock usando ese costo, pero
+                    # no recalculamos; solo avanzamos el puntero FIFO
+                    _ = _consumir_fifo(pid, unidades)
+
+                # Luego, calcular costo_unitario para cada venta nueva en memoria, en orden
+                for venta in ventas_snapshot:
+                    pid = str(venta.get("id") or "").upper()
+                    unidades = int(venta.get("unidades") or 0)
+                    if unidades <= 0:
+                        venta["costo_unitario"] = 0.0
+                        continue
+                    costo_u = _consumir_fifo(pid, unidades)
+                    # Regla de negocio: si no hay stock disponible, costo_unitario = 0
+                    venta["costo_unitario"] = float(costo_u or 0.0)
+            finally:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+
         resultado = writer.agregar_multiples_ventas_a_sheets(ventas_snapshot)
         # Enriquecer respuesta con las ventas efectivamente exportadas
         try:

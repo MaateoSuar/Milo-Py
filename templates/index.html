@@ -41,8 +41,7 @@
             <div class="mx-auto mb-4 flex items-center justify-center">
                 <img src="{{ url_for('static', filename='img/MiloStore.jpeg') }}" alt="Milo Store Logo" class="h-36 w-auto rounded-full border-4 primary-border object-cover">
             </div>
-        
-        
+
             <h1 class="logo-text text-2xl font-bold primary-text">MILO STORE</h1>
             <p class="text-gray-600 text-sm">Sistema de registro de ventas</p>
             <!-- Reloj en tiempo real -->
@@ -87,15 +86,28 @@
     <div class="flex-1 px-6 py-8">
         <!-- Navegación principal -->
         <div class="mb-6 flex items-center gap-2">
+            {% if current_user.is_authenticated and current_user.is_admin %}
             <a href="#" data-view="dashboard" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Dashboard</a>
             <span class="text-gray-400">|</span>
+            {% endif %}
+
             <a href="#" data-view="ventas" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold" role="button">Registrar Ventas</a>
             <span class="text-gray-400">|</span>
             <a href="#" data-view="historial" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Historial de Ventas</a>
+
+            {% if current_user.is_authenticated and current_user.is_admin %}
             <span class="text-gray-400">|</span>
             <a href="#" data-view="egresos" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Registrar Egresos</a>
             <span class="text-gray-400">|</span>
             <a href="#" data-view="historial_egresos" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Historial de Egresos</a>
+            <span class="text-gray-400">|</span>
+            <a href="#" data-view="stock_ingreso" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Stock ingreso</a>
+            <span class="text-gray-400">|</span>
+            <a href="#" data-view="stock_actual" class="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200" role="button">Stock actual</a>
+            {% endif %}
+
+            <!-- Espaciador a la derecha en la barra superior -->
+            <div class="ml-auto flex items-center"></div>
         </div>
 
         <div id="view-dashboard" class="hidden">
@@ -221,6 +233,114 @@
                 </div>
             </div>
         </div>
+
+        <!-- VISTA: Stock ingreso -->
+        <div id="view-stock-ingreso" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="p-6 space-y-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-lg md:text-xl font-semibold primary-text">Stock ingreso</h2>
+                    </div>
+                    <form id="stockIngresoForm" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Fecha</label>
+                                <input type="date" id="st_fecha" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Tipo de producto</label>
+                                <select id="st_tipo" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none cursor-pointer" required>
+                                    <option value="">Selecciona un tipo...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Precio individual ($)</label>
+                                <input type="text" id="st_precio_individual" inputmode="decimal" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" placeholder="Ingresa el precio">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Costo individual ($)</label>
+                                <input type="text" id="st_costo_individual" inputmode="decimal" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Cantidad</label>
+                                <input type="number" id="st_cantidad" min="1" step="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">Costo total ($)</label>
+                                <input type="text" id="st_costo_total" inputmode="decimal" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none bg-gray-50" placeholder="Se calcula automático" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium primary-text mb-1">ID del artículo</label>
+                                <input type="text" id="st_id_articulo" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none uppercase bg-gray-50" placeholder="Se asigna automáticamente" readonly>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium primary-text mb-1">Notas</label>
+                            <textarea id="st_notas" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none" placeholder="Detalles del pedido (proveedor, lote, etc.)"></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-6 py-2 btn-primary rounded-lg font-medium hover:bg-[#c9c1a8] btn-hover btn-active transition-all">
+                                <i class="fas fa-plus-circle mr-2"></i> Agregar ingreso
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="mt-6">
+                        <h3 class="text-base md:text-lg font-semibold primary-text mb-3">Historial de ingresos</h3>
+                        <div id="stockIngresoTableContainer" class="overflow-x-auto scrollbar-hide">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="primary-bg">
+                                    <tr>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">Fecha</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">ID</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">Tipo</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Costo ind.</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Cantidad</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Costo total</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">Notas</th>
+                                        <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stockIngresoBody" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISTA: Stock actual -->
+        <div id="view-stock-actual" class="hidden">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="p-6 space-y-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-lg md:text-xl font-semibold primary-text">Stock actual</h2>
+                    </div>
+                    <div class="text-sm text-gray-600 mb-2">
+                        El estado (Agotado / Necesario volver a comprar / En stock) se calculará según el punto de pedido configurado por artículo.
+                    </div>
+                    <div id="stockActualTableContainer" class="overflow-x-auto scrollbar-hide">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="primary-bg">
+                                <tr>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">ID</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">Nombre</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-left">Tipo</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Cantidad</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Costo prom.</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-right">Punto de pedido</th>
+                                    <th class="px-4 py-2 text-xs font-medium primary-text uppercase tracking-wider text-center">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockActualBody" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- VISTA: Historial (SPA) -->
         <div id="view-historial" class="hidden">
             <div class="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -242,10 +362,18 @@
         <div id="ventaFormCard" class="bg-white rounded-xl shadow-lg overflow-hidden">
             <div class="p-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 id="formTitle" class="text-2xl font-semibold primary-text">Registro de Venta</h2>
-                    <div class="inline-flex rounded-lg overflow-hidden border border-gray-200">
-                        <button id="tabVenta" type="button" class="px-4 py-2 text-sm font-medium primary-text bg-gray-100">Ventas</button>
-                        <button id="tabCambio" type="button" class="px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Cambios</button>
+                    <div class="flex items-center gap-3">
+                        <h2 id="formTitle" class="text-2xl font-semibold primary-text">Registro de Venta</h2>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="inline-flex rounded-lg overflow-hidden border border-gray-200">
+                            <button id="tabVenta" type="button" class="px-4 py-2 text-sm font-medium primary-text bg-gray-100">Ventas</button>
+                            <button id="tabCambio" type="button" class="px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Cambios</button>
+                        </div>
+                        <!-- Arqueo de Caja: solo visible en Registrar Ventas -->
+                        <button id="arqueoBtn" type="button" class="inline-flex items-center px-4 py-2.5 rounded-lg bg-yellow-100 text-yellow-800 text-sm font-semibold hover:bg-yellow-200">
+                            <i class="fas fa-cash-register mr-2"></i> Arqueo de Caja
+                        </button>
                     </div>
                 </div>
 
@@ -260,33 +388,44 @@
                                     required>
                             </div>
                         </div>
-
-                        <!-- ID (dropdown) -->
-                        <div>
-                            <label for="id" class="block text-sm font-medium primary-text mb-1">ID del Producto</label>
-                            <div class="relative">
-                                <select id="id" name="id"
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none uppercase cursor-pointer"
-                                    required>
-                                    <option value="">Selecciona un ID...</option>
-                                </select>
-                                <i class="fas fa-barcode absolute right-8 top-3 text-gray-400 pointer-events-none"></i>
+                        <!-- Panel Arqueo de Caja (clon de MwAccesorios, adaptado) -->
+                        <div id="arqueoPanel" class="hidden md:col-span-1">
+                            <label class="block text-sm font-medium primary-text mb-1">Arqueo de Caja</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <div>
+                                    <label class="block text-xs text-yellow-900 mb-1">Apertura de Caja ($)</label>
+                                    <input type="number" step="0.01" id="arqueoApertura" class="w-full px-3 py-2 border border-yellow-200 rounded-lg focus:outline-none" placeholder="0.00">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-yellow-900 mb-1">Cierre de Caja ($)</label>
+                                    <input type="number" step="0.01" id="arqueoCierre" class="w-full px-3 py-2 border border-yellow-200 rounded-lg focus:outline-none" placeholder="0.00">
+                                </div>
+                                <div class="sm:col-span-2 flex justify-end gap-2">
+                                    <button type="button" id="arqueoGuardar" class="px-4 py-2 bg-yellow-600 text-white rounded-lg text-xs font-medium hover:bg-yellow-700">Guardar</button>
+                                    <button type="button" id="arqueoCerrarPanel" class="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg text-xs font-medium hover:bg-gray-200">Cerrar</button>
+                                </div>
                             </div>
-                            <p id="idHelper" class="mt-1 text-xs text-gray-500">Selecciona un ID del catálogo para autocompletar el nombre.</p>
+                        </div>
+
+                        <!-- Tipo de producto (selección visible) + ID oculto -->
+                        <div>
+                            <label for="tipoProducto" class="block text-sm font-medium primary-text mb-1">Tipo de producto</label>
+                            <div class="relative">
+                                <select id="tipoProducto"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none cursor-pointer"
+                                    required>
+                                    <option value="">Selecciona un tipo...</option>
+                                </select>
+                                <i class="fas fa-list-ul absolute right-8 top-3 text-gray-400 pointer-events-none"></i>
+                            </div>
+                            <!-- ID real de la venta (se asigna automáticamente según tipo + precio) -->
+                            <input type="hidden" id="id" name="id">
+                            <p id="idHelper" class="mt-1 text-xs text-gray-500">Elegí un tipo y un precio para que el sistema asigne el ID automáticamente.</p>
                         </div>
                     </div>
 
-                    <!-- Nombre (autocompletado) -->
-                    <div>
-                        <label for="nombre" class="block text-sm font-medium primary-text mb-1">Nombre del Producto</label>
-                        <div class="relative">
-                            <input type="text" id="nombre" name="nombre"
-                                class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none bg-gray-50"
-                                placeholder="Se autocompleta según el ID" readonly>
-                            <i class="fas fa-tag absolute right-3 top-3 text-gray-400"></i>
-                        </div>
-                        <p id="nombreHelper" class="mt-1 text-xs text-gray-500">Escribí un ID válido para completar el nombre automáticamente.</p>
-                    </div>
+                    <!-- Nombre del producto ya no se muestra; se mantiene solo como hidden para compatibilidad -->
+                    <input type="hidden" id="nombre" name="nombre">
 
                     <div id="precioRow" class="grid grid-cols-1 md:grid-cols-5 gap-6">
                         <!-- Precio -->
@@ -295,7 +434,7 @@
                             <div class="relative">
                                 <input type="text" inputmode="decimal" id="precio" name="precio"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus focus:outline-none"
-                                    placeholder="Rango de precios según ID" required>
+                                    placeholder="Ingresa el precio" required>
                                 <span class="absolute right-3 top-3 text-gray-500">$</span>
                             </div>
                         </div>
@@ -333,6 +472,9 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Información del ID asignado automáticamente -->
+                    <p id="idAsignadoInfo" class="mt-1 text-xs text-gray-500">ID asignado: -</p>
 
                     <!-- Forma de Pago -->
                     <div>
@@ -460,25 +602,43 @@
         </div>
     </div>
 
+    <!-- Modal de Notas (global) -->
+    <div id="noteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
+        <h3 class="text-lg leading-6 font-semibold primary-text mb-2">Nota completa</h3>
+        <div id="noteModalBody" class="text-sm text-gray-700 whitespace-pre-wrap break-words max-h-[60vh] overflow-auto"></div>
+        <div class="mt-6 flex justify-end">
+          <button type="button" id="noteModalClose" class="px-4 py-2 rounded-md primary-bg text-gray-900 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#b2956b]">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- JS -->
-    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='notifications.js') }}?v=hist-notes-2"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=hist-notes-2"></script>
     <script>
     // Helper display de dinero es-AR
     const __fmtMoney = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     function formatMoney(n){ return __fmtMoney.format(Number(n)||0); }
-    // SPA: cambio instantáneo entre Ventas e Historial sin recargar
+    // Flag de rol para la SPA (booleano real en JS)
+    const IS_ADMIN = "{{ 'true' if current_user.is_authenticated and current_user.is_admin else 'false' }}" === "true";
+    // SPA: cambio instantáneo entre vistas sin recargar
     (function(){
       const linkVentas = document.querySelector('a[data-view="ventas"]');
       const linkDash = document.querySelector('a[data-view="dashboard"]');
       const linkHist = document.querySelector('a[data-view="historial"]');
       const linkEgr = document.querySelector('a[data-view="egresos"]');
       const linkEgrHist = document.querySelector('a[data-view="historial_egresos"]');
+      const linkStockIng = document.querySelector('a[data-view="stock_ingreso"]');
+      const linkStockAct = document.querySelector('a[data-view="stock_actual"]');
+      const arqueoBtn = document.getElementById('arqueoBtn');
       const viewVentas = document.getElementById('view-ventas');
       const viewDash = document.getElementById('view-dashboard');
       const viewHist = document.getElementById('view-historial');
       const viewEgr = document.getElementById('view-egresos');
       const viewEgrHist = document.getElementById('view-historial-egresos');
+      const viewStockIngreso = document.getElementById('view-stock-ingreso');
+      const viewStockActual = document.getElementById('view-stock-actual');
       let histRendered = false;
       let histInvalidated = false;
       let egrHistRendered = false;
@@ -495,13 +655,21 @@
           linkEgr && linkEgr.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           linkEgrHist && linkEgrHist.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkEgrHist && linkEgrHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          // Desactivar pestañas de stock
+          linkStockIng && linkStockIng.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           viewVentas.classList.remove('hidden');
           viewDash.classList.add('hidden');
           viewHist.classList.add('hidden');
           viewEgr.classList.add('hidden');
           viewEgrHist.classList.add('hidden');
+          viewStockIngreso && viewStockIngreso.classList.add('hidden');
+          viewStockActual && viewStockActual.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.display = ''; wm.style.opacity = '1'; }
+          if (arqueoBtn) arqueoBtn.classList.remove('hidden');
         } else if (view === 'historial') {
           linkDash && linkDash.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkDash && linkDash.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
@@ -518,8 +686,11 @@
           viewDash.classList.add('hidden');
           viewEgr.classList.add('hidden');
           viewEgrHist.classList.add('hidden');
+          viewStockIngreso && viewStockIngreso.classList.add('hidden');
+          viewStockActual && viewStockActual.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
+          if (arqueoBtn) arqueoBtn.classList.remove('hidden');
         } else if (view === 'egresos') {
           linkDash && linkDash.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkDash && linkDash.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
@@ -531,13 +702,20 @@
           linkHist && linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
           linkEgrHist && linkEgrHist.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkEgrHist && linkEgrHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockIng && linkStockIng.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           viewEgr.classList.remove('hidden');
           viewVentas.classList.add('hidden');
           viewDash.classList.add('hidden');
           viewHist.classList.add('hidden');
           viewEgrHist.classList.add('hidden');
+          viewStockIngreso && viewStockIngreso.classList.add('hidden');
+          viewStockActual && viewStockActual.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
+          if (arqueoBtn) arqueoBtn.classList.add('hidden');
         } else if (view === 'historial_egresos') {
           linkDash && linkDash.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkDash && linkDash.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
@@ -549,13 +727,20 @@
           linkHist && linkHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           linkEgr && linkEgr.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkEgr && linkEgr.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockIng && linkStockIng.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           viewEgrHist.classList.remove('hidden');
           viewVentas.classList.add('hidden');
           viewDash.classList.add('hidden');
           viewHist.classList.add('hidden');
           viewEgr.classList.add('hidden');
+          viewStockIngreso && viewStockIngreso.classList.add('hidden');
+          viewStockActual && viewStockActual.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
+          if (arqueoBtn) arqueoBtn.classList.add('hidden');
         } else if (view === 'dashboard') {
           linkDash && linkDash.classList.remove('bg-gray-100','text-gray-800','hover:bg-gray-200');
           linkDash && linkDash.classList.add('bg-gray-900','text-white','pointer-events-none','cursor-default');
@@ -567,6 +752,10 @@
           linkEgr && linkEgr.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           linkEgrHist && linkEgrHist.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
           linkEgrHist && linkEgrHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockIng && linkStockIng.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
           viewDash.classList.remove('hidden');
           viewVentas.classList.add('hidden');
           viewHist.classList.add('hidden');
@@ -574,10 +763,65 @@
           viewEgrHist.classList.add('hidden');
           const wm = document.getElementById('watermark');
           if (wm) { wm.style.opacity = '0'; wm.style.display = 'none'; }
+          if (arqueoBtn) arqueoBtn.classList.add('hidden');
+        } else if (view === 'stock_ingreso') {
+          // Desactivar todas las pestañas conocidas
+          linkDash && linkDash.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkDash && linkDash.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkVentas && linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkVentas && linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkHist && linkHist.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkHist && linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkEgr && linkEgr.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkEgr && linkEgr.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkEgrHist && linkEgrHist.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkEgrHist && linkEgrHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          const linkStockIng = document.querySelector('a[data-view="stock_ingreso"]');
+          const linkStockAct = document.querySelector('a[data-view="stock_actual"]');
+          linkStockIng && linkStockIng.classList.remove('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockIng && linkStockIng.classList.add('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockAct && linkStockAct.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          viewStockIngreso && viewStockIngreso.classList.remove('hidden');
+          viewStockActual && viewStockActual.classList.add('hidden');
+          viewVentas.classList.add('hidden');
+          viewDash.classList.add('hidden');
+          viewHist.classList.add('hidden');
+          viewEgr.classList.add('hidden');
+          viewEgrHist.classList.add('hidden');
+        } else if (view === 'stock_actual') {
+          // Desactivar todas las pestañas conocidas
+          linkDash && linkDash.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkDash && linkDash.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkVentas && linkVentas.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkVentas && linkVentas.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkHist && linkHist.classList.remove('bg-gray-900', 'text-white', 'pointer-events-none', 'cursor-default');
+          linkHist && linkHist.classList.add('bg-gray-100', 'text-gray-800', 'hover:bg-gray-200');
+          linkEgr && linkEgr.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkEgr && linkEgr.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkEgrHist && linkEgrHist.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkEgrHist && linkEgrHist.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          const linkStockIng = document.querySelector('a[data-view="stock_ingreso"]');
+          const linkStockAct = document.querySelector('a[data-view="stock_actual"]');
+          linkStockAct && linkStockAct.classList.remove('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          linkStockAct && linkStockAct.classList.add('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.remove('bg-gray-900','text-white','pointer-events-none','cursor-default');
+          linkStockIng && linkStockIng.classList.add('bg-gray-100','text-gray-800','hover:bg-gray-200');
+          viewStockIngreso && viewStockIngreso.classList.add('hidden');
+          viewStockActual && viewStockActual.classList.remove('hidden');
+          viewVentas.classList.add('hidden');
+          viewDash.classList.add('hidden');
+          viewHist.classList.add('hidden');
+          viewEgr.classList.add('hidden');
+          viewEgrHist.classList.add('hidden');
         }
       }
 
       function goto(view){
+        // Bloquear vistas restringidas si no es admin
+        if (!IS_ADMIN && (view === 'dashboard' || view === 'egresos' || view === 'historial_egresos' || view === 'stock_ingreso' || view === 'stock_actual')){
+          view = 'ventas';
+        }
         setActive(view);
         if (view === 'historial'){
           renderHistorial();
@@ -588,6 +832,10 @@
           egrHistRendered = true;
         } else if (view === 'dashboard') {
           if (window && typeof window.renderDashboard === 'function') { window.renderDashboard(); }
+        } else if (view === 'stock_ingreso') {
+          if (window && typeof window.renderStockIngreso === 'function') { window.renderStockIngreso(); }
+        } else if (view === 'stock_actual') {
+          if (window && typeof window.renderStockActual === 'function') { window.renderStockActual(); }
         }
       }
 
@@ -752,7 +1000,9 @@
                   <div class="text-sm font-semibold">$${formatMoney(Number(e.costo)||0)}</div>
                   <div class="text-xs md:text-sm text-gray-600">${e.tipo || ''}</div>
                   <div class="text-xs md:text-sm text-gray-600">${e.pago || ''}</div>
-                  <div class="text-xs md:text-sm text-gray-500">${e.observaciones || ''}</div>
+                  <div class="text-xs md:text-sm text-gray-500">
+                    ${e.observaciones ? `<span class=\"truncate inline-block cursor-pointer\" data-note=\"${encodeURIComponent(e.observaciones || '')}\" title=\"${e.observaciones || ''}\">${e.observaciones}</span>` : ''}
+                  </div>
                   <div class="text-right">
                     <button type="button" class="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" data-action="eg-delete" data-id="${e.id}" ${e.id? '' : 'disabled title="No editable"'}>
                       <i class="fas fa-trash-alt"></i>
@@ -807,6 +1057,20 @@
                 }
                 tbody.appendChild(row);
               });
+              // Delegación para abrir modal de observaciones
+              const tbodyRows = dayList.querySelector('[data-day-rows]');
+              if (tbodyRows && !tbodyRows._notesBound){
+                tbodyRows.addEventListener('click', (ev)=>{
+                  const holder = ev.target.closest('[data-note]');
+                  if (holder && tbodyRows.contains(holder)){
+                    const note = holder.getAttribute('data-note') || '';
+                    if (window && typeof window.openNoteModal === 'function'){
+                      window.openNoteModal(decodeURIComponent(note));
+                    }
+                  }
+                }, { passive: true });
+                tbodyRows._notesBound = true;
+              }
               content.appendChild(dayList);
             });
 
@@ -867,7 +1131,28 @@
 
             (meses[ym].sort((a,b)=>b.localeCompare(a))).forEach(fecha=>{
               const ventas = ventasPorFecha[fecha]||[];
-              const totalDia = ventas.reduce((acc,v)=>acc + (Number(v.total)|| (Number(v.precio)*Number(v.unidades))||0),0);
+              let totalDia = 0;
+              let totalTarjetaDia = 0;
+              let totalEfectivoDia = 0;
+              ventas.forEach(v=>{
+                const rowTotal = (Number(v.total) || (Number(v.precio)*Number(v.unidades)) || 0);
+                totalDia += rowTotal;
+                const pagoStr = String(v.pago || '').toLowerCase();
+                if (pagoStr.includes('efect')) totalEfectivoDia += rowTotal;
+                else if (pagoStr.includes('tarjeta') || pagoStr.includes('credito') || pagoStr.includes('débito') || pagoStr.includes('debito')) totalTarjetaDia += rowTotal;
+              });
+
+              // Leer cierre de caja guardado para esa fecha (arqueo)
+              let cierreCaja = 0;
+              try {
+                const k = `arqueo:${fecha}`;
+                const saved = localStorage.getItem(k);
+                if (saved){
+                  const obj = JSON.parse(saved);
+                  cierreCaja = parseFloat(obj?.cierre) || 0;
+                }
+              } catch(_){}
+              const efectivoCaja = +cierreCaja.toFixed(2);
               const group = document.createElement('div');
               group.className='border border-gray-200 rounded-lg';
               group.innerHTML = `
@@ -877,7 +1162,15 @@
                     <span class="font-semibold text-gray-800">${formatearFechaDisplay(fecha)}</span>
                     <span class="text-[11px] sm:text-xs text-gray-500" data-count>(${ventas.length} ventas)</span>
                   </div>
-                  <div class="text-[11px] sm:text-xs md:text-sm text-gray-700" data-total>Total día: $${formatMoney(totalDia)}</div>
+                  <div class="text-[11px] sm:text-xs md:text-sm text-gray-700 flex flex-col md:flex-row md:items-center md:gap-2 text-right md:text-left">
+                    <span data-efectivo-caja>Efectivo final en caja: $${efectivoCaja.toFixed(2)}</span>
+                    <span class="hidden md:inline opacity-70">|</span>
+                    <span data-total-tarjeta>Tarjeta: $${formatMoney(totalTarjetaDia)}</span>
+                    <span class="hidden md:inline opacity-70">|</span>
+                    <span data-total-efectivo>Efectivo: $${formatMoney(totalEfectivoDia)}</span>
+                    <span class="hidden md:inline opacity-70">|</span>
+                    <span data-total>Total día: $${formatMoney(totalDia)}</span>
+                  </div>
                 </button>
                 <div class="hidden" data-content data-fecha="${fecha}"></div>`;
               monthContent.appendChild(group);
@@ -914,6 +1207,7 @@
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Precio</th>
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Unidades</th>
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Total</th>
+                <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider admin-only">Costo individual</th>
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Pago</th>
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Notas</th>
                 <th class="px-3 md:px-6 py-3 text-center text-[10px] sm:text-xs font-medium primary-text uppercase tracking-wider">Acciones</th>
@@ -922,6 +1216,7 @@
             <tbody class="bg-white divide-y divide-gray-200">
               ${ventas.map((v,i)=>{
                 const rowTotal = (Number(v.total) || (Number(v.precio)*Number(v.unidades)) || 0);
+                const costoVal = (v.costo_u!=null || v.costo_unitario!=null) ? ('$'+formatMoney(Number(v.costo_u ?? v.costo_unitario))) : '-';
                 return `
                 <tr data-index="${i}" data-total="${rowTotal}">
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${formatearFechaDisplay(v.fecha)||''}</td>
@@ -930,9 +1225,15 @@
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${formatMoney(Number(v.precio))}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.unidades}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${formatMoney(rowTotal)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center admin-only">${costoVal}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
-                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas||''}">${v.notas||'-'}</td>
-                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
+                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-xs text-center whitespace-normal break-words">
+                    ${v.notas ? `<span class=\"inline-block cursor-pointer whitespace-pre-line text-left\" data-note=\"${encodeURIComponent(String(v.notas))}\" title=\"${v.notas||''}\">${v.notas}</span>` : '-'}
+                  </td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle space-x-1">
+                    <button data-action="download-remito" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-800 transition" title="Descargar remito">
+                      <i class="fas fa-file-pdf text-base"></i>
+                    </button>
                     <button data-action="delete-history" data-fecha="${fecha}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
                       <i class="fas fa-trash text-base"></i>
                     </button>
@@ -944,6 +1245,12 @@
         </div>`;
         contentEl.innerHTML = tableHtml;
         contentEl.dataset.rendered='1';
+
+        // Ocultar columna de costo para usuarios no admin
+        if (!IS_ADMIN){
+          const adminCells = contentEl.querySelectorAll('.admin-only');
+          adminCells.forEach(el => el.classList.add('hidden'));
+        }
 
         // Helper para refrescar solo un día tras eliminar
         async function refreshDia(fechaSel){
@@ -993,6 +1300,7 @@
             }
             tbody.innerHTML = ventasDia.map((v,i)=>{
               const rowTotal = Number(v.total|| (Number(v.precio||0)*Number(v.unidades||0)) || 0);
+              const costoVal = (v.costo_u!=null || v.costo_unitario!=null) ? ('$'+formatMoney(Number(v.costo_u ?? v.costo_unitario))) : '-';
               return `
                 <tr class="hover:bg-gray-50" data-total="${rowTotal}">
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${formatearFechaDisplay(v.fecha)||''}</td>
@@ -1001,8 +1309,11 @@
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${Number(v.precio).toFixed(2)}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.unidades}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">$${rowTotal.toFixed(2)}</td>
+                  <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center admin-only">${costoVal}</td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center">${v.pago}</td>
-                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-[8rem] md:max-w-xs truncate text-center" title="${v.notas||''}">${v.notas||'-'}</td>
+                  <td class="px-3 md:px-6 py-3 text-xs md:text-sm text-gray-700 max-w-xs text-center whitespace-normal break-words">
+                    ${v.notas ? `<span class=\"inline-block cursor-pointer whitespace-pre-line text-left\" data-note=\"${encodeURIComponent(String(v.notas))}\" title=\"${v.notas||''}\">${v.notas}</span>` : '-'}
+                  </td>
                   <td class="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-700 text-center align-middle">
                     <button data-action="delete-history" data-fecha="${fechaSel}" data-index="${i}" class="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition" title="Eliminar">
                       <i class="fas fa-trash text-base"></i>
@@ -1010,8 +1321,26 @@
                   </td>
                 </tr>`;
             }).join('');
+
+            if (!IS_ADMIN){
+              const adminCells = contentEl.querySelectorAll('.admin-only');
+              adminCells.forEach(el => el.classList.add('hidden'));
+            }
             // Re-attach delete handlers to new buttons
             attachDeleteHandlers();
+            // Delegación para abrir modal de notas en refresco
+            if (!tbody._notesBound){
+              tbody.addEventListener('click', (e)=>{
+                const holder = e.target.closest('[data-note]');
+                if (holder && tbody.contains(holder)){
+                  const note = holder.getAttribute('data-note') || '';
+                  if (window && typeof window.openNoteModal === 'function'){
+                    window.openNoteModal(decodeURIComponent(note));
+                  }
+                }
+              }, { passive: true });
+              tbody._notesBound = true;
+            }
             // Recalcular total del mes de forma robusta
             const monthSectionEl = contentEl.closest('[data-month-section]');
             const monthTotalEl = monthSectionEl?.querySelector('[data-month-total]');
@@ -1035,40 +1364,54 @@
         }
         }
         function attachDeleteHandlers(){
-          contentEl.querySelectorAll('[data-action="delete-history"]').forEach(btn=>{
+          contentEl.querySelectorAll('[data-action]').forEach(btn=>{
             btn.addEventListener('click', async (e)=>{
               e.stopPropagation();
+              const action = btn.getAttribute('data-action');
               const fechaSel = btn.getAttribute('data-fecha');
               const idx = btn.getAttribute('data-index');
               if (!fechaSel || idx===null) return;
-              const confirmado = await confirmarAccion({
-                titulo: '¿Eliminar registro?',
-                mensaje: 'Esta acción no se puede deshacer.',
-                confirmarTexto: 'Eliminar',
-                cancelarTexto: 'Cancelar'
-              });
-              if (!confirmado) return;
-              try{
-                const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method:'DELETE' });
-                const data = await res.json();
-                if (!res.ok || !data.success) throw new Error(data.mensaje||data.error||'Error al eliminar');
-                const row = btn.closest('tr');
-                const rowTotal = parseFloat(row?.dataset?.total||'0');
-                // Animación suave y remover
-                if (row){
-                  row.classList.add('opacity-0','transition-opacity','duration-300');
-                  setTimeout(()=>{ row.remove(); }, 300);
+
+              if (action === 'download-remito') {
+                const url = `/remito/${fechaSel}/${idx}`;
+                try {
+                  window.open(url, '_blank');
+                } catch (_) {
+                  window.location.href = url;
                 }
-                if (typeof mostrarNotificacion === 'function') {
-                  mostrarNotificacion('✅ Registro eliminado', 'success');
-                }
-                // Refrescar solo ese día para reindexar y actualizar totales
-                await refreshDia(fechaSel);
-              }catch(err){
-                if (typeof mostrarNotificacion === 'function') {
-                  mostrarNotificacion('❌ '+ err.message, 'error');
-                } else {
-                  alert('Error: '+ err.message);
+                return;
+              }
+
+              if (action === 'delete-history') {
+                const confirmado = await confirmarAccion({
+                  titulo: '¿Eliminar registro?',
+                  mensaje: 'Esta acción no se puede deshacer.',
+                  confirmarTexto: 'Eliminar',
+                  cancelarTexto: 'Cancelar'
+                });
+                if (!confirmado) return;
+                try{
+                  const res = await fetch(`/api/historial/${fechaSel}/${idx}`, { method:'DELETE' });
+                  const data = await res.json();
+                  if (!res.ok || !data.success) throw new Error(data.mensaje||data.error||'Error al eliminar');
+                  const row = btn.closest('tr');
+                  const rowTotal = parseFloat(row?.dataset?.total||'0');
+                  // Animación suave y remover
+                  if (row){
+                    row.classList.add('opacity-0','transition-opacity','duration-300');
+                    setTimeout(()=>{ row.remove(); }, 300);
+                  }
+                  if (typeof mostrarNotificacion === 'function') {
+                    mostrarNotificacion('✅ Registro eliminado', 'success');
+                  }
+                  // Refrescar solo ese día para reindexar y actualizar totales
+                  await refreshDia(fechaSel);
+                }catch(err){
+                  if (typeof mostrarNotificacion === 'function') {
+                    mostrarNotificacion('❌ '+ err.message, 'error');
+                  } else {
+                    alert('Error: '+ err.message);
+                  }
                 }
               }
             });
