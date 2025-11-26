@@ -386,8 +386,17 @@ class CatalogService:
         Retorna: [rango1, rango2, rango3, ...] como floats
         """
         try:
-            # Aceptar "Códigos Stock" o "Codigos Stock" (con/sin acento)
-            ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
+            # Intentar primero usar el GID configurado explícitamente
+            ws = None
+            try:
+                if self.catalog_gid and str(self.catalog_gid).isdigit() and int(self.catalog_gid) > 0:
+                    ws = self.spreadsheet.get_worksheet_by_id(int(self.catalog_gid))
+            except Exception as _:
+                ws = None
+
+            # Fallback: aceptar "Códigos Stock" o "Codigos Stock" (con/sin acento)
+            if ws is None:
+                ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
             if ws is None:
                 raise RuntimeError("No se encontró la hoja 'Codigos Stock'")
 
@@ -451,8 +460,17 @@ class CatalogService:
         Retorna: { "A": [0, 8000, 11600], "AN": [0, 7600, 8000], ... }
         """
         try:
-            # Aceptar "Códigos Stock" o "Codigos Stock"
-            ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
+            # Intentar primero usar el GID configurado explícitamente
+            ws = None
+            try:
+                if self.catalog_gid and str(self.catalog_gid).isdigit() and int(self.catalog_gid) > 0:
+                    ws = self.spreadsheet.get_worksheet_by_id(int(self.catalog_gid))
+            except Exception as _:
+                ws = None
+
+            # Fallback: aceptar "Códigos Stock" o "Codigos Stock"
+            if ws is None:
+                ws = self._get_worksheet_by_title("Códigos Stock") or self._get_worksheet_by_title("Codigos Stock")
             if ws is None:
                 raise RuntimeError("No se encontró la hoja 'Codigos Stock'")
 

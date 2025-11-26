@@ -1327,10 +1327,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Elegir índice de rango según umbrales crecientes
+        // Elegir índice de rango considerando umbrales como mínimos inclusivos (>=)
         let idx = 0;
         for (let i = 0; i < umbralesGrupo.length; i++){
-            if (precioNum > umbralesGrupo[i]){
+            if (precioNum >= umbralesGrupo[i]){
                 idx = i;
             } else {
                 break;
@@ -1468,11 +1468,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let idx = 0;
+        let idx = umbralesGrupo.length - 1;
         for (let i = 0; i < umbralesGrupo.length; i++){
-            if (precioNum > umbralesGrupo[i]){
+            if (precioNum <= umbralesGrupo[i]){
                 idx = i;
-            } else {
                 break;
             }
         }
